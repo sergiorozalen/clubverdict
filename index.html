@@ -514,7 +514,7 @@ async function loadForecasts(){
   const zIds = Object.values(latestZone).map(r => r.run_id), rIds = roundRuns.map(r => r.run_id);
   const [zf, mf, tr] = await Promise.all([
     zIds.length ? sb(`zone_forecast?run_id=in.(${zIds.join(',')})`) : [],
-    rIds.length ? sb(`match_forecast?run_id=in.(${rIds.join(',')})&select=run_id,match_id,p_home,p_draw,p_away,xg_home,xg_away,likely_score,book_home,book_draw,book_away,value_bet,value_edge,match(match_date,kickoff,round,home_club_id,away_club_id,match_result(home_goals,away_goals))`) : [],
+    rIds.length ? sb(`match_forecast?run_id=in.(${rIds.join(',')})&select=*,match(match_date,kickoff,round,home_club_id,away_club_id,match_result(home_goals,away_goals))`) : [],
     sb(`v_track_record?season_id=eq.${LIVE_SEASON}&kind=eq.round`)]);
   D.zone = {}; D.zoneRun = {};
   for (const [cid, r] of Object.entries(latestZone)) { D.zone[LG_OF[cid]] = {}; D.zoneRun[LG_OF[cid]] = r; }
@@ -534,7 +534,7 @@ async function loadForecasts(){
     const R = (D.rounds[lg][no] ||= {no, name, live: {}, retro: {}});
     const res = Array.isArray(m.match_result) ? m.match_result[0] : m.match_result;
     (run.retro ? R.retro : R.live)[f.match_id] = {id: f.match_id, date: m.match_date, time: m.kickoff, h: m.home_club_id, a: m.away_club_id,
-      p: [f.p_home, f.p_draw, f.p_away], xg: [f.xg_home, f.xg_away], likely: f.likely_score,
+      p: [f.p_home, f.p_draw, f.p_away], xg: [f.xg_home, f.xg_away], likely: f.likely_score, tops: f.top_scores || null,
       book: f.book_home ? [f.book_home, f.book_draw, f.book_away] : null, value: f.value_bet, res: res ? [res.home_goals, res.away_goals] : null, retro: run.retro};
   }
   D.track = tr; D.nextRound = {};
@@ -542,7 +542,7 @@ async function loadForecasts(){
     const {nxt} = roundsOf(lg); if (!nxt) continue;
     D.nextRound[lg] = nxt.name;
     for (const f of nxt.fixtures) {
-      if (f.res) continue;
+      if (f.res || f.date < new Date().toLocaleDateString('sv-SE')) continue;
       for (const [id, opp, home] of [[f.h, f.a, true], [f.a, f.h, false]]) if (D.clubs[id] && D.clubs[opp])
         D.clubs[id].nextLive = {round: nxt.name, date: f.date, time: f.time, home, opponent: D.clubs[opp].short,
           p_win: home ? f.p[0] : f.p[2], p_draw: f.p[1], p_loss: home ? f.p[2] : f.p[0], likely: f.likely, book: null};
@@ -552,8 +552,11 @@ async function loadForecasts(){
 function roundsOf(lg){
   const fx = r => Object.values(Object.keys(r.live).length ? r.live : r.retro);
   const rs = Object.values((D.rounds || {})[lg] || {}).sort((a, b) => a.no - b.no).map(r => ({...r, fixtures: fx(r).sort(byDate)}));
-  const nxt = rs.find(r => r.fixtures.some(f => !f.res));
-  const prev = rs.filter(r => r.fixtures.length && r.fixtures.every(f => f.res) && (!nxt || r.no < nxt.no)).pop();
+  const today = new Date().toLocaleDateString('sv-SE');                       // YYYY-MM-DD, local
+  const up = r => r.fixtures.filter(f => !f.res && f.date >= today).length;
+  // next matchday = earliest round with at least 5 games still to come (ignores a lone postponed game of an old round)
+  const nxt = rs.filter(r => up(r) >= 5)[0] || rs.filter(r => up(r) > 0)[0];
+  const prev = rs.filter(r => r.fixtures.length && (!nxt || r.no < nxt.no) && r.fixtures.filter(f => f.res).length >= r.fixtures.length / 2).pop();
   return {nxt, prev};
 }
 function fixtureRow(f){
@@ -568,9 +571,9 @@ function fixtureRow(f){
   }
   return `<div class="fx">
     <div class="eyebrow">${day}${f.time ? ' · ' + esc(f.time) : ''}${f.retro ? ' · back-filled' : ''}</div>
-    <div class="fx-teams"><button class="lnk" data-club="${f.h}">${esc(H.short)}</button><span class="fx-score num ${f.res ? 'done' : ''}">${f.res ? f.res[0] + '–' + f.res[1] : 'v'}</span><button class="lnk" data-club="${f.a}">${esc(A.short)}</button></div>
+    <div class="fx-teams"><button class="lnk" data-club="${f.h}">${esc(H.short)}</button><span class="fx-score num ${f.res ? 'done' : ''}">${f.res ? f.res[0] + '–' + f.res[1] : f.date < new Date().toLocaleDateString('sv-SE') ? 'postp.' : 'v'}</span><button class="lnk" data-club="${f.a}">${esc(A.short)}</button></div>
     <div class="wdl num sm">${seg(f.p[0], 'var(--pitch)', 'Home win')}${seg(f.p[1], 'var(--grey)', 'Draw')}${seg(f.p[2], 'var(--red)', 'Away win')}</div>
-    <div class="fx-meta"><span>Likely <b class="num">${esc(f.likely || '–')}</b></span>${f.xg[0] != null ? `<span>xG <span class="num">${f.xg[0].toFixed(1)}–${f.xg[1].toFixed(1)}</span></span>` : ''}${bk ? `<span>Bookies <span class="num">${pctI(bk[0])} · ${pctI(bk[1])} · ${pctI(bk[2])}</span></span>` : ''}${f.value ? `<span class="pill n">Value: ${f.value}</span>` : ''}${verdict}</div>
+    <div class="fx-meta"><span>${f.tops ? 'Pick' : 'Likely'} <b class="num">${esc(f.likely || '–')}</b></span>${f.tops ? `<span>Top scores <span class="num">${f.tops.map(t => esc(t.score) + ' ' + pctI(t.p)).join(' · ')}</span></span>` : ''}${f.xg[0] != null ? `<span>xG <span class="num">${f.xg[0].toFixed(1)}–${f.xg[1].toFixed(1)}</span></span>` : ''}${bk ? `<span>Bookies <span class="num">${pctI(bk[0])} · ${pctI(bk[1])} · ${pctI(bk[2])}</span></span>` : ''}${f.value ? `<span class="pill n">Value: ${f.value}</span>` : ''}${verdict}</div>
   </div>`;
 }
 function trackHtml(lg){
@@ -589,7 +592,7 @@ function renderMatchday(){
   $('#app').innerHTML = `<section class="hero1"><div class="eyebrow">${esc(L.name)} · forecasts updated every morning</div><h1 class="pg">${nxt ? esc(nxt.name) : 'Matchday'}</h1></section>
   <section class="grid">
     <div class="card s8"><h2>${nxt ? 'This round' : 'No upcoming round'}</h2>
-      <div class="sub">Chances of a home win · draw · away win, the most likely score and expected goals, next to the bookmakers' average. Tap a club for its full verdict.</div>
+      <div class="sub">Chances of a home win · draw · away win and expected goals, next to the bookmakers' average. <b>Pick</b> is the most likely score for the favoured result; <b>Top scores</b> are the three likeliest exact scores. Tap a club for its full verdict.</div>
       ${nxt ? nxt.fixtures.map(fixtureRow).join('') : '<p class="empty">No forecasts published yet.</p>'}</div>
     <div class="card s4"><h2>Track record</h2><div class="sub">${esc(L.name)} 2026-27: how often each side's favourite won.</div>${trackHtml(league)}</div>
     ${prev ? `<div class="card s12"><h2>Last round · ${esc(prev.name)}</h2><div class="sub">What the model said before kick-off, and what happened.</div>${prev.fixtures.map(fixtureRow).join('')}</div>` : ''}
