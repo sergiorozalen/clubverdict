@@ -775,7 +775,7 @@ function drawExplorer(full){
   const xa = axis(ex.x, rx), ya = axis(ex.y, ry); if (ex.x === 'squad') xa.range = undefined; if (ex.y === 'squad') ya.range = undefined;
   const layout = {margin: {l: 56, r: 16, t: 10, b: 50}, paper_bgcolor: paper, plot_bgcolor: paper, xaxis: xa, yaxis: ya, shapes, showlegend: false,
     font: {family: 'Barlow', color: ink}, hoverlabel: {font: {family: 'Barlow'}}, transition: full ? undefined : {duration: 650, easing: 'cubic-in-out'}};
-  if (full) el.innerHTML = '';
+  if (full) { if (el._fullLayout) Plotly.purge(el); el.innerHTML = ''; el._exBound = false; }   // clean redraw when the axes change
   Plotly.react(el, traces, layout, {displayModeBar: false, responsive: true});
   if (!el._exBound) { el._exBound = true; el.on('plotly_click', d => { const id = d.points[0] && d.points[0].customdata && d.points[0].customdata[0]; if (!id) return;
     ex.hl = ex.hl.includes(id) ? ex.hl.filter(x => x !== id) : ex.hl.concat(id).slice(-4); exSave(); drawExplorer(false); }); }
