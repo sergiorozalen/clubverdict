@@ -151,6 +151,19 @@ tr.click:hover td{background:var(--paper)}
 .lt td,.lt th{padding:7px 6px;white-space:nowrap}
 .sep{border-left:1px solid var(--line)}
 @media (max-width:820px){.hide-s{display:none}.fx-teams{font-size:19px}}
+
+/* explorer */
+.exctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:4px 0 12px}
+.exctl label{display:flex;flex-direction:column;gap:4px;font:600 12px Barlow;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.exctl select{width:100%}
+.expre{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.expre button,.explay{border:1px solid var(--line);background:var(--card);color:var(--ink);font:600 14px Barlow;padding:6px 12px;border-radius:999px;cursor:pointer}
+.expre button:hover{border-color:var(--ink)}
+.exbar{display:flex;align-items:center;gap:12px;margin-top:8px}
+.exbar input[type=range]{flex:1;accent-color:var(--pitch)}
+.exbar .rd{font-family:"Barlow Condensed";font-weight:700;font-size:20px;min-width:110px;text-align:right}
+#exchart{width:100%;height:min(68vh,620px);min-height:380px}
+.exnote{font-size:13px;color:var(--muted);margin-top:8px}
 </style>
 </head>
 <body>
@@ -209,7 +222,7 @@ function zoneOf(pos, L){ const z = L.zones.find(z => pos>=z[0] && pos<=z[1]); re
 function renderClub(){
   const c = D.clubs[clubId], L = D.leagues[league];
   store.set('cv-club', clubId);
-  const t = c.table, lk = c.luck, o = c.outlookLive || c.outlook, n = c.nextLive || c.next, sq = c.squad, ab = c.absences, v = c.verdict;
+  const t = c.table, lk = c.luckLive ? {...c.luck, ...c.luckLive} : c.luck, o = c.outlookLive || c.outlook, n = c.nextLive || c.next, sq = c.squad, ab = c.absences, v = liveVerdict(c) || c.verdict;
   const N = L.order.length;
   const tl = c.live || t;   // live table when Supabase answered, else the snapshot
 
@@ -219,12 +232,13 @@ function renderClub(){
 
   // luck section
   const diff = lk.pts_minus_xpts;
+  const lkPts = c.luckLive ? c.luckLive.pts : t.pts, lkGames = c.luckLive ? c.luckLive.games : t.played;   // same games on both sides
   const luckMsg = Math.abs(diff) < 1.5
-    ? ['a', `Points match performance. ${t.pts} points from chances worth ${lk.xpts.toFixed(1)}.`]
-    : diff > 0 ? ['a', `${t.pts} points from chances worth ${lk.xpts.toFixed(1)}. Results are ahead of the football; expect some of that to come back.`]
-               : ['g', `${t.pts} points from chances worth ${lk.xpts.toFixed(1)}. Performances deserve more; results tend to catch up.`];
+    ? ['a', `Points match performance. ${lkPts} points from chances worth ${lk.xpts.toFixed(1)}.`]
+    : diff > 0 ? ['a', `${lkPts} points from chances worth ${lk.xpts.toFixed(1)}. Results are ahead of the football; expect some of that to come back.`]
+               : ['g', `${lkPts} points from chances worth ${lk.xpts.toFixed(1)}. Performances deserve more; results tend to catch up.`];
   const dotAt = r => `left:${((r-0.5)/N*100).toFixed(2)}%`;
-  const ladder = [['League table', t.pos], ['Chances (xPts)', lk.xpts_rank], ['Bookmakers', c.market.rank]]
+  const ladder = [['League table', tl.pos], ['Chances (xPts)', lk.xpts_rank], ['Bookmakers', (c.marketLive || c.market).rank]]
     .map(([l,r]) => `<div class="lab">${l}</div><div class="track"><div class="dot num" style="${dotAt(r)}">${r}</div></div>`).join('');
 
   // outlook
@@ -288,7 +302,7 @@ function renderClub(){
       <h2>Is the table lying?</h2>
       <div class="sub">Points won vs points the chances created were worth (xPts), and where three different views rank the club.</div>
       <div class="kpis">
-        <div class="kpi"><div class="v num">${t.pts}</div><div class="l">Points</div></div>
+        <div class="kpi"><div class="v num">${lkPts}</div><div class="l">Points</div></div>
         <div class="kpi"><div class="v num">${lk.xpts.toFixed(1)}</div><div class="l">Expected points</div></div>
         <div class="kpi"><div class="v num" style="color:${diff>1.5?'var(--amber)':diff<-1.5?'var(--pitch)':'inherit'}">${sgn(diff)}</div><div class="l">Luck</div></div>
       </div>
@@ -296,7 +310,7 @@ function renderClub(){
       <div class="kpis" style="margin-top:16px">
         <div class="kpi"><div class="v num">${lk.xgf_pg.toFixed(2)}</div><div class="l">xG for / game (${ord(lk.att_rank)})</div></div>
         <div class="kpi"><div class="v num">${lk.xga_pg.toFixed(2)}</div><div class="l">xG against / game (${ord(lk.def_rank)})</div></div>
-        <div class="kpi"><div class="v num">${t.played}</div><div class="l">Games played</div></div>
+        <div class="kpi"><div class="v num">${lkGames}</div><div class="l">Games ${c.luckLive && lkGames < tl.played ? 'with xG' : 'played'}</div></div>
       </div>
       <div class="callout ${luckMsg[0]}">${luckMsg[1]}</div>
     </div>
@@ -479,8 +493,8 @@ async function loadLive(){
 }
 
 /* ---- Views: Clubs / Matchday / Tables ---------------------------------------------------- */
-let view = ['club', 'matchday', 'tables'].includes(store.get('cv-view')) ? store.get('cv-view') : 'club';
-const VIEWS = [['club', 'Clubs'], ['matchday', 'Matchday'], ['tables', 'Tables']];
+let view = ['club', 'matchday', 'tables', 'explore'].includes(store.get('cv-view')) ? store.get('cv-view') : 'club';
+const VIEWS = [['club', 'Clubs'], ['matchday', 'Matchday'], ['tables', 'Tables'], ['explore', 'Explorer']];
 function buildViewSeg(){
   $('#view').innerHTML = VIEWS.map(([k, l]) => `<button data-v="${k}" aria-pressed="${k===view}">${l}</button>`).join('');
   $('#view').querySelectorAll('button').forEach(b => b.onclick = () => { view = b.dataset.v; buildViewSeg(); render(); scrollTo(0, 0); });
@@ -488,8 +502,10 @@ function buildViewSeg(){
 function render(){
   store.set('cv-view', view);
   $('#club').style.display = view === 'club' ? '' : 'none';
+  $('#lg').style.display = view === 'explore' ? 'none' : '';
   if (view === 'matchday') return renderMatchday();
   if (view === 'tables') return renderTables();
+  if (view === 'explore') return renderExplorer();
   return renderClub();
 }
 function openClub(id){
@@ -620,11 +636,230 @@ function renderTables(){
   $('#app').querySelectorAll('tr.click').forEach(r => r.onclick = () => openClub(+r.dataset.club));
 }
 
+/* ---- Explorer: Gapminder-style bubble chart, one bubble per club, play through the matchdays ---- */
+const EXM = {   // metric: [label, unit-group, function(row, squad) -> value or null]
+  ppg:      ['Points per game', 'ppg', r => r.played ? r.points / r.played : null],
+  points:   ['Points', 'pts', r => r.points],
+  position: ['League position', 'pos', r => r.played ? r.position : null],
+  win_pct:  ['Win %', 'pct', r => r.played ? 100 * r.won / r.played : null],
+  gf_pg:    ['Goals scored per game', 'g', r => r.played ? r.goals_for / r.played : null],
+  ga_pg:    ['Goals conceded per game', 'g', r => r.played ? r.goals_against / r.played : null],
+  gd:       ['Goal difference', 'gd', r => r.goals_for - r.goals_against],
+  xgf_pg:   ['xG for per game', 'g', r => r.xg_games ? r.xg_for / r.xg_games : null],
+  xga_pg:   ['xG against per game', 'g', r => r.xg_games ? r.xg_against / r.xg_games : null],
+  xgd_pg:   ['xG difference per game', 'gd', r => r.xg_games ? (r.xg_for - r.xg_against) / r.xg_games : null],
+  xpts_pg:  ['Expected points per game (from xG)', 'ppg', r => r.xg_games ? r.xpts / r.xg_games : null],
+  luck_xg:  ['Luck: points above xG expectation', 'luck', r => r.xg_games ? r.points_xg_games - r.xpts : null],
+  mkt_pg:   ["Bookies' expected points per game", 'ppg', r => r.mkt_games ? r.mkt_points / r.mkt_games : null],
+  luck_mkt: ["Points above the bookies' expectation", 'luck', r => r.mkt_games ? r.points_mkt_games - r.mkt_points : null],
+  squad:    ['Squad value (€m, today)', 'eur', (r, q) => q ? +q.squad_value_m : null],
+  age:      ['Average squad age (today)', 'age', (r, q) => q ? +q.avg_age : null],
+};
+const EXSIZE = {none: 'Same size', squad: 'Squad value', points: 'Points'};
+const EXCOL = {league: 'League', zone: 'Table zone'};
+const EXPRESETS = [
+  ['Who is lucky?', {x: 'xpts_pg', y: 'ppg', size: 'squad', color: 'zone'}],
+  ['Did the bookies see it coming?', {x: 'mkt_pg', y: 'ppg', size: 'squad', color: 'zone'}],
+  ['Attack vs defence', {x: 'xgf_pg', y: 'xga_pg', size: 'points', color: 'zone'}],
+  ['Does money buy points?', {x: 'squad', y: 'ppg', size: 'points', color: 'league'}],
+];
+const ex = {season: 2026, league: 'both', x: 'xpts_pg', y: 'ppg', size: 'squad', color: 'zone', frame: null, playing: null, hl: []};
+try { Object.assign(ex, JSON.parse(store.get('cv-ex') || '{}'), {playing: null, frame: null}); } catch (e) {}
+const exSave = () => store.set('cv-ex', JSON.stringify({season: ex.season, league: ex.league, x: ex.x, y: ex.y, size: ex.size, color: ex.color, hl: ex.hl}));
+
+async function loadExplorer(){
+  if (D.exRows) return;
+  const page = async (path) => { let out = [], from = 0; for (;;) { const r = await sb(path, from, from + 999); out = out.concat(r); if (r.length < 1000) return out; from += 1000; } };
+  const [rows, sq] = await Promise.all([page('v_club_round?select=*&order=season_id,competition_id,rnd,club_id'), page('v_club_squad?select=*')]);
+  D.exRows = rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'string' && k !== 'competition_id' && v !== '' && !isNaN(v) ? +v : v])));
+  D.exSquad = Object.fromEntries(sq.map(q => [q.club_id, q]));
+  const ids = [...new Set(D.exRows.map(r => r.club_id))];
+  D.exNames = Object.fromEntries((await sb(`club?select=club_id,short_name,name&club_id=in.(${ids.join(',')})`)).map(c => [c.club_id, c.short_name || c.name]));
+  // chart library, loaded only when the Explorer opens; several mirrors in case one is blocked or down
+  const CDNS = ['https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js', 'https://unpkg.com/plotly.js-dist-min@2.35.2/plotly.min.js',
+                'https://cdn.plot.ly/plotly-2.35.2.min.js'];
+  for (const src of CDNS) {
+    if (window.Plotly) break;
+    await new Promise(ok => { const sc = document.createElement('script'); sc.src = src; sc.onload = ok; sc.onerror = ok; document.head.appendChild(sc); });
+  }
+  if (!window.Plotly) throw new Error('chart library did not load (check the internet connection or an ad blocker)');
+}
+function exData(){
+  const lgs = ex.league === 'both' ? ['ES1', 'GB1'] : [LG_CID[ex.league]];
+  const rows = D.exRows.filter(r => r.season_id === ex.season && lgs.includes(r.competition_id));
+  const maxBy = {}; for (const r of rows) maxBy[r.competition_id] = Math.max(maxBy[r.competition_id] || 0, r.rnd);
+  const maxR = Math.max(0, ...Object.values(maxBy));
+  const at = {};   // club -> rnd -> row
+  for (const r of rows) (at[r.club_id] ||= {})[r.rnd] = r;
+  return {rows, maxBy, maxR, at};
+}
+function exValue(key, r){ const f = EXM[key][2]; const v = r ? f(r, D.exSquad[r.club_id]) : null; return v == null || !isFinite(v) ? null : v; }
+function exName(id){ return (D.clubs[id] && D.clubs[id].short) || (D.exNames || {})[id] || ('Club ' + id); }
+function exColor(r){
+  if (ex.color === 'league') return r.competition_id === 'ES1' ? css('--amber') : css('--blue');
+  const n = 20, p = r.position;
+  return p <= 4 ? css('--pitch') : p <= 7 ? css('--blue') : p >= n - 2 ? css('--red') : css('--grey');
+}
+function renderExplorer(){
+  const opt = (obj, cur) => Object.entries(obj).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(Array.isArray(v) ? v[0] : v)}</option>`).join('');
+  $('#app').innerHTML = `<section class="hero1"><div class="eyebrow">Explorer · inspired by Hans Rosling's Gapminder</div><h1 class="pg">Every club, every matchday</h1></section>
+  <div class="card" style="margin-bottom:28px">
+    <div class="sub">Each bubble is a club. Choose what goes on each axis, then press play to watch the season unfold matchday by matchday. Tap a bubble to follow that club's path.</div>
+    <div class="expre">${EXPRESETS.map(([l], i) => `<button data-p="${i}">${esc(l)}</button>`).join('')}</div>
+    <div class="exctl">
+      <label>Horizontal (X)<select id="ex-x">${opt(EXM, ex.x)}</select></label>
+      <label>Vertical (Y)<select id="ex-y">${opt(EXM, ex.y)}</select></label>
+      <label>Bubble size<select id="ex-size">${opt(EXSIZE, ex.size)}</select></label>
+      <label>Colour<select id="ex-color">${opt(EXCOL, ex.color)}</select></label>
+      <label>League<select id="ex-league">${opt({both: 'Both leagues', laliga: 'LaLiga', epl: 'Premier League'}, ex.league)}</select></label>
+      <label>Season<select id="ex-season">${opt({2026: '2026-27', 2025: '2025-26'}, String(ex.season))}</select></label>
+    </div>
+    <div id="exchart"><p class="empty">${D.exError ? 'Explorer unavailable: ' + esc(D.exError) : 'Loading data…'}</p></div>
+    <div class="exbar"><button class="explay" id="ex-play">▶ Play</button><input type="range" id="ex-frame" min="1" max="1" value="1" aria-label="Matchday"><span class="rd num" id="ex-rd"></span></div>
+    <div class="exnote" id="ex-note"></div>
+  </div>`;
+  const bindSel = (id, key, num) => { $('#' + id).onchange = e => { ex[key] = num ? +e.target.value : e.target.value; if (key === 'season' || key === 'league') ex.frame = null; exSave(); drawExplorer(true); }; };
+  bindSel('ex-x', 'x'); bindSel('ex-y', 'y'); bindSel('ex-size', 'size'); bindSel('ex-color', 'color'); bindSel('ex-league', 'league'); bindSel('ex-season', 'season', true);
+  $('#app').querySelectorAll('.expre button').forEach(b => b.onclick = () => { Object.assign(ex, EXPRESETS[+b.dataset.p][1]); exSave(); renderExplorer(); });
+  $('#ex-frame').oninput = e => { exStop(); ex.frame = +e.target.value; drawExplorer(false); };
+  $('#ex-play').onclick = () => ex.playing ? exStop() : exPlay();
+  loadExplorer().then(() => drawExplorer(true)).catch(e => { D.exError = String((e && e.message) || e); if (view === 'explore') $('#exchart').innerHTML = `<p class="empty">Explorer unavailable: ${esc(D.exError)}</p>`; });
+}
+function exStop(){ if (ex.playing) clearInterval(ex.playing); ex.playing = null; const b = $('#ex-play'); if (b) b.textContent = '▶ Play'; }
+function exPlay(){
+  const {maxR} = exData(); if (!maxR) return;
+  if (!ex.frame || ex.frame >= maxR) ex.frame = 1;
+  $('#ex-play').textContent = '❚❚ Pause';
+  drawExplorer(false);
+  ex.playing = setInterval(() => { if (view !== 'explore' || ex.frame >= maxR) return exStop(); ex.frame++; drawExplorer(false); }, 900);
+}
+function drawExplorer(full){
+  if (!D.exRows || !window.Plotly || view !== 'explore') return;
+  const el = $('#exchart'); if (!el) return;
+  const {rows, maxBy, maxR, at} = exData();
+  if (!maxR) { el.innerHTML = '<p class="empty">No matches played yet for this selection.</p>'; return; }
+  if (!ex.frame || ex.frame > maxR) ex.frame = maxR;
+  const f = ex.frame;
+  const cur = Object.entries(at).map(([id, byR]) => byR[Math.min(f, maxBy[byR[Object.keys(byR)[0]].competition_id])]).filter(Boolean);
+  const pts = cur.map(r => ({r, x: exValue(ex.x, r), y: exValue(ex.y, r)})).filter(p => p.x != null && p.y != null);
+  // axis ranges fixed over the whole season, so movement means something
+  const all = rows.map(r => [exValue(ex.x, r), exValue(ex.y, r)]).filter(v => v[0] != null && v[1] != null);
+  const rng = i => { const v = all.map(a => a[i]); if (!v.length) return undefined; let lo = Math.min(...v), hi = Math.max(...v); const pad = (hi - lo || 1) * 0.08; return [lo - pad, hi + pad]; };
+  const sizeOf = r => ex.size === 'squad' ? Math.sqrt(Math.max(+((D.exSquad[r.club_id] || {}).squad_value_m || 0), 1)) : ex.size === 'points' ? Math.sqrt(Math.max(r.points, 0.5)) * 4 : 7;
+  const maxSize = Math.max(...rows.map(r => sizeOf(r)), 1);
+  const hl = new Set(ex.hl);
+  const fmt = (k, v) => v == null ? '–' : EXM[k][1] === 'eur' ? '€' + Math.round(v) + 'm' : EXM[k][1] === 'pct' ? Math.round(v) + '%' : Number.isInteger(v) ? v : v.toFixed(2);
+  const ink = css('--ink'), muted = css('--muted'), line = css('--line'), paper = css('--card');
+  const traces = [{
+    type: 'scatter', mode: 'markers+text', ids: pts.map(p => String(p.r.club_id)),
+    x: pts.map(p => p.x), y: pts.map(p => p.y),
+    text: pts.map(p => hl.has(p.r.club_id) || pts.length <= 20 ? exName(p.r.club_id) : ''), textposition: 'top center',
+    textfont: {family: 'Barlow', size: 11, color: muted},
+    customdata: pts.map(p => [p.r.club_id, exName(p.r.club_id), p.r.played, p.r.points, p.r.position, fmt(ex.x, p.x), fmt(ex.y, p.y)]),
+    hovertemplate: '<b>%{customdata[1]}</b><br>%{customdata[4]}. · %{customdata[3]} pts from %{customdata[2]} games<br>X: %{customdata[5]}<br>Y: %{customdata[6]}<extra></extra>',
+    marker: {size: pts.map(p => 8 + 38 * sizeOf(p.r) / maxSize), color: pts.map(p => exColor(p.r)),
+             opacity: pts.map(p => hl.size && !hl.has(p.r.club_id) ? 0.35 : 0.85), line: {width: pts.map(p => hl.has(p.r.club_id) ? 2.5 : 1), color: ink}},
+  }];
+  for (const id of hl) {   // trail of each followed club
+    const byR = at[id]; if (!byR) continue;
+    const path = Object.values(byR).filter(r => r.rnd <= f).sort((a, b) => a.rnd - b.rnd).map(r => [exValue(ex.x, r), exValue(ex.y, r)]).filter(v => v[0] != null && v[1] != null);
+    traces.push({type: 'scatter', mode: 'lines', x: path.map(v => v[0]), y: path.map(v => v[1]), hoverinfo: 'skip', showlegend: false,
+                 line: {color: ink, width: 1.5, dash: 'dot'}});
+  }
+  const same = EXM[ex.x][1] === EXM[ex.y][1] && ['ppg', 'g'].includes(EXM[ex.x][1]);
+  const rx = rng(0), ry = rng(1);
+  const shapes = same && rx && ry ? [{type: 'line', x0: Math.min(rx[0], ry[0]), y0: Math.min(rx[0], ry[0]), x1: Math.max(rx[1], ry[1]), y1: Math.max(rx[1], ry[1]), line: {color: line, width: 2, dash: 'dash'}, layer: 'below'}] : [];
+  const rev = k => ['position', 'ga_pg', 'xga_pg'].includes(k) ? 'reversed' : true;
+  const axis = (k, r) => ({title: {text: EXM[k][0], font: {family: 'Barlow', size: 13, color: muted}}, range: rev(k) === 'reversed' && r ? [r[1], r[0]] : r,
+    type: k === 'squad' ? 'log' : 'linear', gridcolor: line, zerolinecolor: line, tickfont: {family: 'Barlow', color: muted}});
+  const xa = axis(ex.x, rx), ya = axis(ex.y, ry); if (ex.x === 'squad') xa.range = undefined; if (ex.y === 'squad') ya.range = undefined;
+  const layout = {margin: {l: 56, r: 16, t: 10, b: 50}, paper_bgcolor: paper, plot_bgcolor: paper, xaxis: xa, yaxis: ya, shapes, showlegend: false,
+    font: {family: 'Barlow', color: ink}, hoverlabel: {font: {family: 'Barlow'}}, transition: full ? undefined : {duration: 650, easing: 'cubic-in-out'}};
+  if (full) el.innerHTML = '';
+  Plotly.react(el, traces, layout, {displayModeBar: false, responsive: true});
+  if (!el._exBound) { el._exBound = true; el.on('plotly_click', d => { const id = d.points[0] && d.points[0].customdata && d.points[0].customdata[0]; if (!id) return;
+    ex.hl = ex.hl.includes(id) ? ex.hl.filter(x => x !== id) : ex.hl.concat(id).slice(-4); exSave(); drawExplorer(false); }); }
+  const fr = $('#ex-frame'); fr.max = maxR; fr.value = f;
+  $('#ex-rd').textContent = 'Matchday ' + f;
+  const missing = cur.length - pts.length;
+  const lgNote = ex.league === 'both' && Object.keys(maxBy).length === 2 && maxBy.ES1 !== maxBy.GB1 ? ` LaLiga is up to matchday ${maxBy.ES1}, the Premier League to ${maxBy.GB1}; each league stops at its latest.` : '';
+  $('#ex-note').textContent = (missing ? `${missing} clubs not shown: no data for this measure yet${ex.season === 2025 && /xg|xpts/.test(ex.x + ex.y) ? ' (expected goals are not available for 2025-26)' : ''}.` : '') +
+    (same ? ' Dashed line: where the two measures are equal.' : '') + lgNote + (ex.hl.length ? ' Dotted lines: paths of the clubs you are following (tap again to stop).' : '');
+}
+
+/* ---- Live luck and verdict: the same rules as site/verdict.py, fed with today's numbers ---- */
+async function loadLuck(){
+  const rows = await sb(`v_club_round?season_id=eq.${LIVE_SEASON}&select=competition_id,club_id,rnd,played,points,xg_games,xg_for,xg_against,xpts,points_xg_games,mkt_games,mkt_points`);
+  const last = {};
+  for (const r of rows) if (!last[r.club_id] || r.rnd > last[r.club_id].rnd) last[r.club_id] = r;
+  const byLg = {}; for (const r of Object.values(last)) (byLg[r.competition_id] ||= []).push(r);
+  const num = v => v == null ? null : +v;
+  for (const list of Object.values(byLg)) {
+    const L = list.map(r => ({r, xgf: r.xg_games ? num(r.xg_for) / r.xg_games : null, xga: r.xg_games ? num(r.xg_against) / r.xg_games : null,
+                              xpg: r.xg_games ? num(r.xpts) / r.xg_games : null, mpg: r.mkt_games ? num(r.mkt_points) / r.mkt_games : null}));
+    const rank = (key, asc) => L.filter(x => x[key] != null).sort((a, b) => asc ? a[key] - b[key] : b[key] - a[key]).forEach((x, i) => x[key + '_rank'] = i + 1);
+    rank('xgf'); rank('xga', true); rank('xpg'); rank('mpg');
+    for (const x of L) {
+      const c = D.clubs[x.r.club_id]; if (!c) continue;
+      if (x.mpg_rank) c.marketLive = {rank: x.mpg_rank};
+      if (!x.r.xg_games) continue;
+      c.luckLive = {xpts: num(x.r.xpts), pts: x.r.points_xg_games, games: x.r.xg_games, pts_minus_xpts: x.r.points_xg_games - num(x.r.xpts),
+                    xpts_rank: x.xpg_rank, xgf_pg: x.xgf, xga_pg: x.xga, att_rank: x.xgf_rank, def_rank: x.xga_rank};
+    }
+  }
+}
+function liveVerdict(c){
+  if (!c.luckLive && !c.live) return null;
+  const n = D.leagues[c.league].order.length, good = [], bad = [];
+  const t = c.live || c.table, L = c.luckLive ? {...c.luck, ...c.luckLive} : c.luck, M = c.marketLive || c.market, O = c.outlookLive || c.outlook;
+  const S = c.squad || {}, A = c.absences || {out: [], xi_share_lost: 0};
+  const pc = x => Math.round(100 * x) + '%', lpts = c.luckLive ? c.luckLive.pts : t.pts;
+  const diff = L.pts_minus_xpts;
+  if (diff <= -2.5) good.push([-diff, 'Better than the table says', `Unlucky so far: ${lpts} points from chances worth ${L.xpts.toFixed(0)}. Performances point to a better table position than ${ord(t.pos)}.`]);
+  if (diff >= 2.5) bad.push([diff, 'Riding their luck', `Results are ahead of performances: ${lpts} points from chances worth ${L.xpts.toFixed(0)}. Expect some regression.`]);
+  const gap = t.pos - M.rank;
+  if (gap >= 4) good.push([gap / 2, 'The market believes in them', `The bookmakers rate them ${ord(M.rank)} strongest in the league, well above their ${ord(t.pos)} place.`]);
+  if (gap <= -4) bad.push([-gap / 2, 'The market expects a drop', `The bookmakers rate them only ${ord(M.rank)} strongest, below their ${ord(t.pos)} place: the market expects a drop.`]);
+  if (L.att_rank <= 3) good.push([5 - L.att_rank, 'An elite attack', `One of the league's best attacks: ${L.xgf_pg.toFixed(2)} expected goals per game (${ord(L.att_rank)} of ${n}).`]);
+  if (L.att_rank >= n - 2) bad.push([L.att_rank - n + 4, 'Struggling to create', `Creating very little: ${L.xgf_pg.toFixed(2)} expected goals per game (${ord(L.att_rank)} of ${n}).`]);
+  if (L.def_rank <= 3) good.push([5 - L.def_rank, 'A tight defence', `Hard to break down: ${L.xga_pg.toFixed(2)} expected goals conceded per game (${ord(L.def_rank)} best of ${n}).`]);
+  if (L.def_rank >= n - 2) bad.push([L.def_rank - n + 4, 'A leaky defence', `Leaky defence: ${L.xga_pg.toFixed(2)} expected goals conceded per game (${ord(L.def_rank)} of ${n}).`]);
+  if (O.p_title && O.p_title >= 0.15) good.push([5 * O.p_title + 2, 'Title contenders', `Real title contenders: ${pc(O.p_title)} chance of winning the league.`]);
+  else if (O.p_ucl >= 0.5) good.push([2 * O.p_ucl, 'Heading for the Champions League', `On course for the Champions League: ${pc(O.p_ucl)} chance of a top-4 finish.`]);
+  else if (O.p_ucl + O.p_europe >= 0.4) good.push([1.5 * (O.p_ucl + O.p_europe), 'In the race for Europe', `In the race for Europe: ${pc(O.p_ucl + O.p_europe)} chance of a top-7 finish.`]);
+  if (O.p_releg >= 0.2) bad.push([6 * O.p_releg, 'In a relegation fight', `Relegation danger: ${pc(O.p_releg)} chance of finishing in the bottom three.`]);
+  if (S.curve_index != null) {
+    const ci = S.curve_index;
+    if (ci >= 0.01) good.push([100 * ci, 'A squad on the way up', `A squad still on the way up: the most valuable players are young enough to improve (curve index ${ci >= 0 ? '+' : ''}${(100 * ci).toFixed(1)}%, ${ord(S.curve_rank)} of ${S.ranked_of}).`]);
+    if (ci <= -0.03) bad.push([-100 * ci / 1.5, 'An ageing core', `An ageing core: key players are past their peak years (curve index ${(100 * ci).toFixed(1)}%, ${ord(S.curve_rank)} of ${S.ranked_of}).`]);
+    const dec = (S.stage_share || {}).declining || 0;
+    if (dec >= 0.35) bad.push([dec * 5, 'Past-peak squad', `${pc(dec)} of the squad's value is in players past their peak.`]);
+    const players = livePlayers(c);   // only players still at the club
+    const bargains = players.filter(p => p.vfm != null && p.vfm <= -0.3 && p.minutes_2526 >= 1500);
+    if (bargains.length) { const b = bargains.reduce((a, x) => x.vfm < a.vfm ? x : a);
+      good.push([1 + bargains.length * 0.2, 'Bargains in the squad', `Good value in the squad: ${b.name} is priced ${pc(-b.vfm)} below what his output suggests (€${b.value_m.toFixed(0)}m vs €${b.fair_value_m.toFixed(0)}m)` + (bargains.length > 1 ? `, with ${bargains.length - 1} more like him.` : '.')]); }
+    const pricey = players.filter(p => p.vfm != null && p.vfm >= 0.8 && p.value_m >= 20);
+    if (pricey.length) { const q = pricey.reduce((a, x) => x.value_m * x.vfm > a.value_m * a.vfm ? x : a);
+      bad.push([1.2 + 0.2 * pricey.length, 'Paying for reputation', `Paying for reputation: ${q.name} is valued at €${q.value_m.toFixed(0)}m, ${pc(q.vfm)} above what last season's output and minutes suggest.`]); }
+  }
+  if (A.xi_share_lost >= 0.08) bad.push([30 * A.xi_share_lost, 'Hit by injuries', `Injuries bite: ${pc(A.xi_share_lost)} of the best XI's value is unavailable (${A.out.slice(0, 3).map(x => x.name).join(', ')}).`]);
+  const form = t.form || [], w = form.filter(x => x === 'W').length, l = form.filter(x => x === 'L').length;
+  if (w >= 4) good.push([w - 1, 'In form', `In form: ${w} wins in the last ${form.length}.`]);
+  if (l >= 3) bad.push([l - 1, 'Out of form', `Poor run: ${l} defeats in the last ${form.length}.`]);
+  const trim = x => { const i = x.indexOf(': '); if (i < 0) return x; const head = x.slice(0, i), rest = x.slice(i + 2);
+    return rest && head.length <= 40 && !/\d/.test(head) ? rest[0].toUpperCase() + rest.slice(1) : x; };
+  good.sort((a, b) => b[0] - a[0]); bad.sort((a, b) => b[0] - a[0]);
+  const out = {good: good.slice(0, 3).map(g => ({title: g[1], text: trim(g[2])})), worry: bad.slice(0, 3).map(b => ({title: b[1], text: trim(b[2])}))};
+  out.headline = good.length && (!bad.length || good[0][0] >= bad[0][0]) ? good[0][1] : bad.length ? bad[0][1] : 'Doing about as well as the numbers say';
+  return out;
+}
+
 initTheme();
 const saved = +store.get('cv-club');
 if (saved && D.clubs[saved]) { clubId = saved; league = D.clubs[saved].league; } else { clubId = D.leagues[league].order[0]; }
 D.liveLoading = true;
 buildViewSeg(); buildLeagueSeg(); buildSelect(); render();
+loadLuck().then(() => render()).catch(e => console.warn('Live luck unavailable:', e));
 loadForecasts().then(() => render()).catch(e => { console.warn('Forecasts unavailable:', e); D.fcError = String((e && e.message) || e); render(); });
 const SNAP_ORDER = Object.fromEntries(Object.entries(D.leagues).map(([k, l]) => [k, l.order.slice()]));
 loadLive().then(() => { D.liveLoading = false; if (!D.liveTo) throw new Error('no results returned'); buildSelect(); render(); }).catch(e => {
@@ -636,7 +871,7 @@ loadLive().then(() => { D.liveLoading = false; if (!D.liveTo) throw new Error('n
   D.liveError = String((e && e.message) || e) + (at ? ' at ' + at.trim().slice(0, 80) : '');
   buildSelect(); render();
 });
-let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const c = D.clubs[clubId]; if (view !== 'club') return; drawCurve(livePlayers(c), c.squad.curve_index!=null); drawHist(c.history, c.league==='laliga'?'ES1':'GB1'); bindTip(); }, 150); });
+let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const c = D.clubs[clubId]; if (view === 'explore') return drawExplorer(true); if (view !== 'club') return; drawCurve(livePlayers(c), c.squad.curve_index!=null); drawHist(c.history, c.league==='laliga'?'ES1':'GB1'); bindTip(); }, 150); });
 function bindTip(){}
 </script>
 
