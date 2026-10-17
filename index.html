@@ -190,6 +190,7 @@ function render(){
   store.set('cv-club', clubId);
   const t = c.table, lk = c.luck, o = c.outlook, n = c.next, sq = c.squad, ab = c.absences, v = c.verdict;
   const N = L.order.length;
+  const tl = c.live || t;   // live table when Supabase answered, else the snapshot
 
   const head = v.headline ? `<span>${esc(v.headline)}.</span>` : '';
   const good = v.good.length ? v.good.map(p => `<div class="pt"><b>${esc(p.title)}</b><p>${esc(p.text)}</p></div>`).join('') : `<div class="empty">Nothing stands out yet.</div>`;
@@ -242,17 +243,18 @@ function render(){
     : `<div class="callout a">Promoted side: squad values in our snapshot are incomplete, so the curve index and value-for-money are not shown.</div>`;
 
   // value for money
-  const vp = sq.players.filter(p => p.vfm != null);
+  const players = livePlayers(c);   // players still at the club (live squads), else the snapshot
+  const vp = players.filter(p => p.vfm != null);
 
   $('#app').innerHTML = `
   <section class="hero">
     <div>
-      <div class="eyebrow">${esc(c.league_name)} · ${esc(L.zone_label)} · data to ${new Date(L.played_up_to).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+      <div class="eyebrow">${esc(c.league_name)} · ${c.live ? 'Live table · after ' + tl.played + ' games' : esc(L.zone_label) + (D.liveError ? ' · snapshot (live: ' + esc(D.liveError) + ')' : D.liveLoading ? ' · checking live data…' : ' · v4 ' + esc(D.liveDiag || 'no diagnosis'))} · data to ${new Date(c.live && D.liveTo ? ((D.liveToBy || {})[league] || D.liveTo) : L.played_up_to).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
       <h1>${esc(c.name)}</h1>
       <div class="verdict-line">${head}</div>
-      <div class="record num"><span><b>${t.w}</b>W <b>${t.d}</b>D <b>${t.l}</b>L</span><span>Goals <b>${t.gf}–${t.ga}</b></span><span class="form">${t.form.map(r=>`<span class="${r}">${r}</span>`).join('')}</span><span>last ${t.form.length}, oldest first</span></div>
+      <div class="record num"><span><b>${tl.w}</b>W <b>${tl.d}</b>D <b>${tl.l}</b>L</span><span>Goals <b>${tl.gf}–${tl.ga}</b></span><span class="form">${tl.form.map(r=>`<span class="${r}">${r}</span>`).join('')}</span><span>last ${tl.form.length}, oldest first</span></div>
     </div>
-    <div class="posbox"><div class="big num">${t.pos}<sup>${ord(t.pos).slice(-2)}</sup></div><div class="eyebrow">${t.pts} pts · ${esc(zoneOf(t.pos,L))}</div></div>
+    <div class="posbox"><div class="big num">${tl.pos}<sup>${ord(tl.pos).slice(-2)}</sup></div><div class="eyebrow">${tl.pts} pts · ${esc(zoneOf(tl.pos,L))}</div></div>
   </section>
 
   <section class="vgrid">
@@ -330,7 +332,7 @@ function render(){
     <p>Prototype · built ${D.generated}.</p>
   </footer>`;
 
-  drawCurve(sq.players, hasVals);
+  drawCurve(players, hasVals);
   drawHist(c.history, c.league === 'laliga' ? 'ES1' : 'GB1');
   if (vp.length) setupVfm(vp);
 }
@@ -410,11 +412,67 @@ function drawHist(h, top){
   el.innerHTML = s;
 }
 
+/* ---- Live data from Supabase ------------------------------------------------------------
+   Read-only: the publishable key can only SELECT (Row Level Security). If anything fails,
+   the page quietly keeps the snapshot embedded above. */
+const SB_URL = 'https://fqqyeixrelyexbejjgxw.supabase.co', SB_KEY = 'sb_publishable_IS9UKTfkIWks5pdz035TVw_KiXOTd__';
+const LIVE_SEASON = 2026, LG_OF = {ES1: 'laliga', GB1: 'epl'};
+async function sb(path, from = 0, to = 999){
+  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {headers: {apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, Range: `${from}-${to}`},
+    signal: AbortSignal.timeout(10000), cache: 'no-store'});
+  if (r.status === 416) return [];   // asked for rows past the end: nothing there
+  if (!r.ok) throw new Error(`${path.split('?')[0]}: ${r.status}`);
+  return r.json();
+}
+function livePlayers(c){ return c.squadLive ? c.squad.players.filter(p => c.squadLive.has(p.id)) : c.squad.players; }
+async function loadLive(){
+  if (SB_URL.startsWith('__')) return;
+  const sqSel = 'v_current_squad?select=club_id,player_id,confirmed_on';
+  const [tbl, mt, sqA, sqB] = await Promise.all([
+    sb(`v_league_table?season_id=eq.${LIVE_SEASON}&select=competition_id,club_id,played,won,drawn,lost,goals_for,goals_against,goal_diff,points,position`),
+    sb(`match?season_id=eq.${LIVE_SEASON}&select=competition_id,match_date,home_club_id,away_club_id,match_result(home_goals,away_goals)&order=match_date.asc`),
+    sb(sqSel, 0, 999), sb(sqSel, 1000, 1999)]);
+  const form = {}, lastBy = {}; let last = '';
+  const res = (g, o) => g > o ? 'W' : g === o ? 'D' : 'L';
+  for (const m of mt) {
+    const r = Array.isArray(m.match_result) ? m.match_result[0] : m.match_result;
+    if (!r) continue;
+    if (m.match_date > last) last = m.match_date;
+    const lg = LG_OF[m.competition_id]; if (lg && !(m.match_date <= lastBy[lg])) lastBy[lg] = m.match_date;
+    (form[m.home_club_id] ||= []).push(res(r.home_goals, r.away_goals));
+    (form[m.away_club_id] ||= []).push(res(r.away_goals, r.home_goals));
+  }
+  const rows = tbl.filter(r => D.clubs[r.club_id] && LG_OF[r.competition_id]);
+  D.liveDiag = `${tbl.length} table rows (${rows.length} usable, e.g. ${JSON.stringify(tbl[0] || {}).slice(0, 90)}), ${mt.length} matches, results to ${last || 'none'}, ${sqA.length + sqB.length} squad rows`;
+  if (!rows.length) return;
+  for (const r of rows) D.clubs[r.club_id].live = {pos: r.position, played: r.played, w: r.won, d: r.drawn, l: r.lost,
+    gf: r.goals_for, ga: r.goals_against, gd: r.goal_diff, pts: r.points, form: (form[r.club_id] || []).slice(-5)};
+  for (const [cid, lg] of Object.entries(LG_OF)) {
+    const ids = rows.filter(r => r.competition_id === cid).sort((a, b) => a.position - b.position || D.clubs[a.club_id].short.localeCompare(D.clubs[b.club_id].short)).map(r => r.club_id);
+    if (ids.length === D.leagues[lg].order.length) D.leagues[lg].order = ids;
+  }
+  const squads = {};
+  for (const s of sqA.concat(sqB)) (squads[s.club_id] ||= new Set()).add(s.player_id);
+  for (const [id, set] of Object.entries(squads)) if (D.clubs[id]) D.clubs[id].squadLive = set;
+  D.liveTo = last; D.liveToBy = lastBy;   // latest result per league
+}
+
 initTheme();
 const saved = +store.get('cv-club');
 if (saved && D.clubs[saved]) { clubId = saved; league = D.clubs[saved].league; } else { clubId = D.leagues[league].order[0]; }
+D.liveLoading = true;
 buildLeagueSeg(); buildSelect(); render();
-let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const c = D.clubs[clubId]; drawCurve(c.squad.players, c.squad.curve_index!=null); drawHist(c.history, c.league==='laliga'?'ES1':'GB1'); bindTip(); }, 150); });
+const SNAP_ORDER = Object.fromEntries(Object.entries(D.leagues).map(([k, l]) => [k, l.order.slice()]));
+loadLive().then(() => { D.liveLoading = false; if (!D.liveTo) throw new Error('no results returned'); buildSelect(); render(); }).catch(e => {
+  D.liveLoading = false;
+  console.warn('Live data unavailable, showing snapshot:', e);
+  for (const c of Object.values(D.clubs)) { delete c.live; delete c.squadLive; }      // back to the pure snapshot
+  for (const [k, o] of Object.entries(SNAP_ORDER)) D.leagues[k].order = o;
+  const at = ((e && e.stack) || '').split('\n').find(l => /index|html|loadLive|render|drawCurve/.test(l)) || '';
+  D.liveError = String((e && e.message) || e) + (at ? ' at ' + at.trim().slice(0, 80) : '');
+  buildSelect(); render();
+});
+let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const c = D.clubs[clubId]; drawCurve(livePlayers(c), c.squad.curve_index!=null); drawHist(c.history, c.league==='laliga'?'ES1':'GB1'); bindTip(); }, 150); });
 function bindTip(){}
 </script>
 
