@@ -164,6 +164,17 @@ tr.click:hover td{background:var(--paper)}
 .exbar .rd{font-family:"Barlow Condensed";font-weight:700;font-size:20px;min-width:110px;text-align:right}
 #exchart{width:100%;height:min(68vh,620px);min-height:380px}
 .exnote{font-size:13px;color:var(--muted);margin-top:8px}
+
+/* season diary */
+.diary .entry{display:grid;grid-template-columns:92px 1fr;gap:4px 16px;padding:14px 0;border-bottom:1px solid var(--line)}
+.diary .entry:last-child{border-bottom:0}
+.diary .meta{font-size:13px;color:var(--muted);line-height:1.35}
+.diary .meta .res{display:inline-block;font:700 12px Barlow;color:#fff;border-radius:4px;padding:1px 6px;margin-bottom:4px}
+.diary .res.W{background:var(--pitch)} .diary .res.D{background:var(--grey)} .diary .res.L{background:var(--red)}
+.diary h4{font-family:"Barlow Condensed";font-size:21px;font-weight:700;line-height:1.1;margin:0 0 4px}
+.diary p{margin:0;font-size:15px}
+.diary .more{margin-top:10px;border:1px solid var(--line);background:none;color:var(--ink);font:600 14px Barlow;padding:6px 12px;border-radius:999px;cursor:pointer}
+@media (max-width:820px){.diary .entry{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -297,6 +308,8 @@ function renderClub(){
     <div class="vcol bad"><h3>What's worrying</h3>${bad}</div>
   </section>
 
+  <section class="card diary" id="diary" style="margin-bottom:28px"><h2>Season diary</h2><div class="sub">Our take after every match, written the morning after from the numbers: result, chances, expectations and luck.</div><div id="diary-body"><p class="empty">Loading…</p></div></section>
+
   <section class="grid">
     <div class="card s7">
       <h2>Is the table lying?</h2>
@@ -368,6 +381,7 @@ function renderClub(){
   </footer>`;
 
   drawCurve(players, hasVals);
+  renderDiary(c);
   drawHist(c.history, c.league === 'laliga' ? 'ES1' : 'GB1');
   if (vp.length) setupVfm(vp);
 }
@@ -852,6 +866,45 @@ function liveVerdict(c){
   const out = {good: good.slice(0, 3).map(g => ({title: g[1], text: trim(g[2])})), worry: bad.slice(0, 3).map(b => ({title: b[1], text: trim(b[2])}))};
   out.headline = good.length && (!bad.length || good[0][0] >= bad[0][0]) ? good[0][1] : bad.length ? bad[0][1] : 'Doing about as well as the numbers say';
   return out;
+}
+
+/* ---- Season diary ---- */
+const diaryCache = {}, diaryOpen = {};
+async function loadDiary(id){
+  if (diaryCache[id]) return diaryCache[id];
+  const rows = await sb(`match_commentary?club_id=eq.${id}&select=match_id,headline,body,facts,created&order=facts->>date.desc`);
+  return (diaryCache[id] = rows);
+}
+function diaryLuckSvg(rows){
+  const pts = rows.slice().reverse().map(r => r.facts && r.facts.season_after_this_match ? r.facts.season_after_this_match.luck_points_vs_xg : null).filter(v => v != null);
+  if (pts.length < 3) return '';
+  const W = 640, H = 70, pad = 6, lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = (hi - lo) || 1;
+  const X = i => pad + i * (W - 2 * pad) / (pts.length - 1), Y = v => pad + (hi - v) * (H - 2 * pad) / span;
+  const d = pts.map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1)).join(' ');
+  const last = pts[pts.length - 1];
+  return `<div class="sub" style="margin:4px 0 0">Luck through the season: points won minus points their chances were worth. Above the line = ahead of the football.</div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Luck over the season, now ${last > 0 ? '+' : ''}${last}">
+      <line x1="${pad}" x2="${W - pad}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <path d="${d}" fill="none" stroke="${last >= 0 ? 'var(--amber)' : 'var(--pitch)'}" stroke-width="2.5" stroke-linejoin="round"/>
+      <circle cx="${X(pts.length - 1)}" cy="${Y(last)}" r="4" fill="${last >= 0 ? 'var(--amber)' : 'var(--pitch)'}"/>
+    </svg>`;
+}
+function renderDiary(c){
+  const box = document.getElementById('diary-body'); if (!box) return;
+  const id = c.id || clubId;
+  loadDiary(id).then(rows => {
+    if (view !== 'club' || clubId != id || !document.getElementById('diary-body')) return;
+    if (!rows.length) { box.innerHTML = '<p class="empty">The diary starts after the next match.</p>'; return; }
+    const show = diaryOpen[id] ? rows : rows.slice(0, 4);
+    box.innerHTML = diaryLuckSvg(rows) + show.map(r => {
+      const F = r.facts || {}, res = {win: 'W', draw: 'D', defeat: 'L'}[F.result] || '';
+      const day = F.date ? new Date(F.date + 'T12:00:00').toLocaleDateString('en-GB', {day: 'numeric', month: 'short'}) : '';
+      return `<div class="entry"><div class="meta"><span class="res ${res}">${esc(F.score_club_first || '')}</span><br>${esc(day)}<br>${F.venue === 'home' ? 'vs' : 'at'} ${esc(F.opponent || '')}</div>
+        <div><h4>${esc(r.headline)}</h4><p>${esc(r.body)}</p></div></div>`;
+    }).join('') + (rows.length > 4 ? `<button class="more" id="diary-more">${diaryOpen[id] ? 'Show fewer' : 'Show all ' + rows.length + ' entries'}</button>` : '');
+    const more = document.getElementById('diary-more');
+    if (more) more.onclick = () => { diaryOpen[id] = !diaryOpen[id]; renderDiary(c); };
+  }).catch(() => { box.innerHTML = '<p class="empty">The diary is not available right now.</p>'; });
 }
 
 initTheme();
