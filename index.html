@@ -178,6 +178,8 @@ tr.click:hover td{background:var(--paper)}
 
 /* how we got here: score grid per match */
 .why{border:1px solid var(--line);background:none;color:var(--ink);font:600 13px Barlow;padding:3px 10px;border-radius:999px;cursor:pointer}
+.why:disabled{opacity:.35;cursor:default}
+.mdpick select{font:600 15px Barlow;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink)}
 .why[aria-expanded="true"]{background:var(--ink);color:var(--card)}
 .whyp{margin:12px 0 4px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
 .whyp .wh{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-bottom:10px}
@@ -611,7 +613,7 @@ function roundsOf(lg){
   // next matchday = earliest round with at least 5 games still to come (ignores a lone postponed game of an old round)
   const nxt = rs.filter(r => up(r) >= 5)[0] || rs.filter(r => up(r) > 0)[0];
   const prev = rs.filter(r => r.fixtures.length && (!nxt || r.no < nxt.no) && r.fixtures.filter(f => f.res).length >= r.fixtures.length / 2).pop();
-  return {nxt, prev};
+  return {rs, nxt, prev};
 }
 function fixtureRow(f){
   const H = D.clubs[f.h], A = D.clubs[f.a]; if (!H || !A) return '';
@@ -640,20 +642,42 @@ function trackHtml(lg){
   return `<div class="scroll"><table><thead><tr><th></th><th class="r">Games</th><th class="r">Model fav. won</th><th class="r">Bookies fav. won</th><th class="r">Value bets ±</th></tr></thead><tbody>${line('Live', live)}${line('Incl. back-filled', all)}</tbody></table></div>
     <div class="callout a">Value bets: 1 unit whenever the model's chance × the price is more than 5% above break-even. Small sample, and no evidence of a real edge over the bookmakers so far.</div>`;
 }
+const mdSel = {};   // chosen matchday per league (null = latest)
 function renderMatchday(){
   const L = D.leagues[league];
   if (!D.rounds) { $('#app').innerHTML = `<section class="hero1"><div class="eyebrow">${esc(L.name)}</div><h1 class="pg">Matchday</h1></section><p class="empty">${D.fcError ? 'Forecasts unavailable: ' + esc(D.fcError) : 'Loading forecasts…'}</p>`; return; }
-  const {nxt, prev} = roundsOf(league);
-  $('#app').innerHTML = `<section class="hero1"><div class="eyebrow">${esc(L.name)} · forecasts updated every morning</div><h1 class="pg">${nxt ? esc(nxt.name) : 'Matchday'}</h1></section>
+  const {rs, nxt, prev} = roundsOf(league);
+  const list = rs.filter(r => r.fixtures.length), dflt = nxt || prev || list[list.length - 1];
+  const sel = list.find(r => r.no === mdSel[league]) || dflt, isDefault = !sel || sel === dflt, i = list.indexOf(sel);
+  const done = sel ? sel.fixtures.filter(f => f.res) : [], isRetro = sel && !Object.keys(sel.live).length;
+  const right = (f, p) => { const y = f.res[0] > f.res[1] ? 0 : f.res[0] === f.res[1] ? 1 : 2; return argmax(p) === y; };
+  const nm = done.filter(f => right(f, f.p)).length, wb = done.filter(f => f.book);
+  const summary = done.length ? `<div style="margin:10px 0 4px;display:flex;gap:8px;flex-wrap:wrap">
+      <span class="pill ${nm * 2 >= done.length ? 'g' : 'r'}">Model favourite won ${nm} of ${done.length}</span>
+      ${wb.length ? `<span class="pill n">Bookies' favourite won ${wb.filter(f => right(f, fair3(f.book))).length} of ${wb.length}</span>` : ''}</div>` : '';
+  const picker = list.length > 1 ? `<div class="mdpick" style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="why" id="md-prev" ${i <= 0 ? 'disabled' : ''} aria-label="Previous matchday">‹</button>
+      <select id="md-sel" aria-label="Matchday">${list.map(r => `<option value="${r.no}" ${r === sel ? 'selected' : ''}>${esc(r.name)}${r === nxt ? ' · next' : ''}${!Object.keys(r.live).length ? ' · back-filled' : ''}</option>`).join('')}</select>
+      <button class="why" id="md-next" ${i >= list.length - 1 ? 'disabled' : ''} aria-label="Next matchday">›</button>
+      ${isDefault ? '' : '<button class="why" id="md-now">Back to latest</button>'}</div>` : '';
+  const title = !sel ? 'No forecasts published yet' : sel === nxt ? 'This round' : done.length === sel.fixtures.length ? 'Results' : 'In progress';
+  const note = !sel ? '' : isRetro ? 'Back-filled: these forecasts were worked out after the site started, not before kick-off, so they are kept out of the live track record.'
+    : sel === nxt ? "Chances of a home win · draw · away win and expected goals, next to the bookmakers' average." : 'What the model said before kick-off, and what happened.';
+  $('#app').innerHTML = `<section class="hero1"><div class="eyebrow">${esc(L.name)} · forecasts updated every morning</div><h1 class="pg">${sel ? esc(sel.name) : 'Matchday'}</h1>${picker}</section>
   <section class="grid">
-    <div class="card s8"><h2>${nxt ? 'This round' : 'No upcoming round'}</h2>
-      <div class="sub">Chances of a home win · draw · away win and expected goals, next to the bookmakers' average. <b>Result</b> is the most likely outcome; <b>Top scores</b> are the three likeliest exact scores. <b>How we got here</b> shows the working. Tap a club for its full verdict.</div>
-      ${nxt ? nxt.fixtures.map(fixtureRow).join('') : '<p class="empty">No forecasts published yet.</p>'}</div>
+    <div class="card s8"><h2>${title}</h2>
+      <div class="sub">${note} <b>Result</b> is the most likely outcome; <b>Top scores</b> are the three likeliest exact scores. <b>How we got here</b> shows the working.</div>${summary}
+      ${sel ? sel.fixtures.map(fixtureRow).join('') : '<p class="empty">No forecasts published yet.</p>'}</div>
     <div class="card s4"><h2>Track record</h2><div class="sub">${esc(L.name)} 2026-27: how often each side's favourite won.</div>${trackHtml(league)}</div>
-    ${prev ? `<div class="card s12"><h2>Last round · ${esc(prev.name)}</h2><div class="sub">What the model said before kick-off, and what happened.</div>${prev.fixtures.map(fixtureRow).join('')}</div>` : ''}
+    ${isDefault && prev && prev !== sel ? `<div class="card s12"><h2>Last round · ${esc(prev.name)}</h2><div class="sub">What the model said before kick-off, and what happened.</div>${prev.fixtures.map(fixtureRow).join('')}</div>` : ''}
   </section>`;
+  const go = no => { mdSel[league] = no; renderMatchday(); };
+  if ($('#md-sel')) $('#md-sel').onchange = e => go(+e.target.value);
+  if ($('#md-prev')) $('#md-prev').onclick = () => go(list[i - 1].no);
+  if ($('#md-next')) $('#md-next').onclick = () => go(list[i + 1].no);
+  if ($('#md-now')) $('#md-now').onclick = () => go(null);
   bindClubLinks();
-  document.querySelectorAll('.why').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.why[data-why]').forEach(b => b.onclick = () => {
     const box = document.getElementById('why-' + b.dataset.why), open = b.getAttribute('aria-expanded') !== 'true';
     b.setAttribute('aria-expanded', open); box.hidden = !open;
     if (open && !box.innerHTML) box.innerHTML = whyHtml(FX[b.dataset.why]);
