@@ -267,7 +267,8 @@ function renderClub(){
     nextHtml = `<div class="matchup"><div class="vs">${n.home?'vs':'at'} ${esc(n.opponent)}</div><div class="eyebrow">${esc(n.round)} · ${ds}${n.time?' · '+n.time:''}</div></div>
       <div class="wdl num">${seg(n.p_win,'var(--pitch)','Win')}${seg(n.p_draw,'var(--grey)','Draw')}${seg(n.p_loss,'var(--red)','Loss')}</div>
       <div class="legend num"><span>Win ${pct(n.p_win)}</span><span>Draw ${pct(n.p_draw)}</span><span>Loss ${pct(n.p_loss)}</span></div>
-      <div style="display:flex;gap:16px;align-items:end;margin-top:14px"><div><div class="eyebrow">Most likely score</div><div class="score num">${esc(n.likely)}</div></div>
+      <div style="display:flex;gap:24px;align-items:end;flex-wrap:wrap;margin-top:14px">${(() => { const r = [['Win', n.p_win], ['Draw', n.p_draw], ['Loss', n.p_loss]].reduce((a, b) => b[1] > a[1] ? b : a); return `<div><div class="eyebrow">Most likely result</div><div class="score num">${r[0]} <span style="font-size:.55em;color:var(--muted)">${pct(r[1])}</span></div></div>`; })()}
+      ${n.tops ? `<div><div class="eyebrow">Top scores (${esc(c.short)} first)</div><div class="num" style="font-size:17px;font-weight:600;margin-bottom:4px">${n.tops.map(t => esc(t.score) + ' <span style="color:var(--muted);font-weight:400">' + pct(t.p) + '</span>').join(' · ')}</div></div>` : n.likely ? `<div><div class="eyebrow">Most likely score</div><div class="score num">${esc(n.likely)}</div></div>` : ''}
       <div class="sub" style="margin:0 0 4px">${n.home?c.short+' at home':c.short+' away'}. ${c.nextLive ? 'Daily forecast; injuries are not included yet.' : 'Model probabilities include the current injury list.'}</div></div>`;
   }
 
@@ -575,7 +576,8 @@ async function loadForecasts(){
       if (f.res || f.date < new Date().toLocaleDateString('sv-SE')) continue;
       for (const [id, opp, home] of [[f.h, f.a, true], [f.a, f.h, false]]) if (D.clubs[id] && D.clubs[opp])
         D.clubs[id].nextLive = {round: nxt.name, date: f.date, time: f.time, home, opponent: D.clubs[opp].short,
-          p_win: home ? f.p[0] : f.p[2], p_draw: f.p[1], p_loss: home ? f.p[2] : f.p[0], likely: f.likely, book: null};
+          p_win: home ? f.p[0] : f.p[2], p_draw: f.p[1], p_loss: home ? f.p[2] : f.p[0], likely: f.likely, book: null,
+          tops: f.tops ? f.tops.map(t => ({p: t.p, score: home ? t.score : t.score.split('-').reverse().join('-')})) : null};
     }
   }
 }
@@ -603,7 +605,7 @@ function fixtureRow(f){
     <div class="eyebrow">${day}${f.time ? ' · ' + esc(f.time) : ''}${f.retro ? ' · back-filled' : ''}</div>
     <div class="fx-teams"><button class="lnk" data-club="${f.h}">${esc(H.short)}</button><span class="fx-score num ${f.res ? 'done' : ''}">${f.res ? f.res[0] + '–' + f.res[1] : f.date < new Date().toLocaleDateString('sv-SE') ? 'postp.' : 'v'}</span><button class="lnk" data-club="${f.a}">${esc(A.short)}</button></div>
     <div class="wdl num sm">${seg(f.p[0], 'var(--pitch)', 'Home win')}${seg(f.p[1], 'var(--grey)', 'Draw')}${seg(f.p[2], 'var(--red)', 'Away win')}</div>
-    <div class="fx-meta"><span>${f.tops ? 'Pick' : 'Likely'} <b class="num">${esc(f.likely || '–')}</b></span>${f.tops ? `<span>Top scores <span class="num">${f.tops.map(t => esc(t.score) + ' ' + pctI(t.p)).join(' · ')}</span></span>` : ''}${f.xg[0] != null ? `<span>xG <span class="num">${f.xg[0].toFixed(1)}–${f.xg[1].toFixed(1)}</span></span>` : ''}${bk ? `<span>Bookies <span class="num">${pctI(bk[0])} · ${pctI(bk[1])} · ${pctI(bk[2])}</span></span>` : ''}${f.value ? `<span class="pill n">Value: ${f.value}</span>` : ''}${verdict}</div>
+    <div class="fx-meta"><span>Result <b>${mi === 1 ? 'Draw' : esc((mi === 0 ? H : A).short) + ' win'}</b> <span class="num">${pctI(f.p[mi])}</span></span>${f.tops ? `<span>Top scores <span class="num">${f.tops.map(t => esc(t.score) + ' ' + pctI(t.p)).join(' · ')}</span></span>` : f.likely ? `<span>Top score <span class="num">${esc(f.likely)}</span></span>` : ''}${f.xg[0] != null ? `<span>xG <span class="num">${f.xg[0].toFixed(1)}–${f.xg[1].toFixed(1)}</span></span>` : ''}${bk ? `<span>Bookies <span class="num">${pctI(bk[0])} · ${pctI(bk[1])} · ${pctI(bk[2])}</span></span>` : ''}${f.value ? `<span class="pill n">Value: ${f.value}</span>` : ''}${verdict}</div>
   </div>`;
 }
 function trackHtml(lg){
