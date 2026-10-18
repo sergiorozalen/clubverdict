@@ -293,11 +293,24 @@ function renderClub(){
       <div class="legend num"><span>Win ${pct(n.p_win)}</span><span>Draw ${pct(n.p_draw)}</span><span>Loss ${pct(n.p_loss)}</span></div>
       <div style="display:flex;gap:24px;align-items:end;flex-wrap:wrap;margin-top:14px">${(() => { const r = [['Win', n.p_win], ['Draw', n.p_draw], ['Loss', n.p_loss]].reduce((a, b) => b[1] > a[1] ? b : a); return `<div><div class="eyebrow">Most likely result</div><div class="score num">${r[0]} <span style="font-size:.55em;color:var(--muted)">${pct(r[1])}</span></div></div>`; })()}
       ${n.tops ? `<div><div class="eyebrow">Top scores (${esc(c.short)} first)</div><div class="num" style="font-size:17px;font-weight:600;margin-bottom:4px">${n.tops.map(t => esc(t.score) + ' <span style="color:var(--muted);font-weight:400">' + pct(t.p) + '</span>').join(' · ')}</div></div>` : n.likely ? `<div><div class="eyebrow">Most likely score</div><div class="score num">${esc(n.likely)}</div></div>` : ''}
-      <div class="sub" style="margin:0 0 4px">${n.home?c.short+' at home':c.short+' away'}. ${c.nextLive ? 'Daily forecast; injuries are not included yet.' : 'Model probabilities include the current injury list.'}</div></div>`;
+      <div class="sub" style="margin:0 0 4px">${n.home?c.short+' at home':c.short+' away'}. ${c.nextLive ? (c.absLive ? 'Daily forecast, including injuries and suspensions.' : 'Daily forecast; injuries are not included yet for this league.') : 'Model probabilities include the current injury list.'}</div></div>`;
   }
 
-  // absences
-  const absHtml = ab.out.length
+  // absences: today's injury list when the pipeline has one for this league, else the snapshot
+  const liveAbs = (() => {
+    if (!c.absLive) return null;
+    const val = Object.fromEntries((sq.players || []).filter(p => p.value_m).map(p => [p.id, p]));
+    const xi = ps => { const gk = ps.filter(p => p.pos === 'GK').map(p => p.value_m).sort((a, b) => b - a).slice(0, 1), of = ps.filter(p => p.pos !== 'GK').map(p => p.value_m).sort((a, b) => b - a).slice(0, 10); return [...gk, ...of].reduce((a, b) => a + b, 0); };
+    const out = c.absLive.filter(a => a.status === 'out'), dbt = c.absLive.filter(a => a.status === 'doubtful');
+    const outIds = new Set(out.map(a => a.player_id).filter(Boolean)), all = Object.values(val);
+    const full = xi(all), share = full && all.length >= 15 ? 1 - xi(all.filter(p => !outIds.has(p.id))) / full : null;
+    const back = a => a.expected_return ? 'back ' + new Date(a.expected_return + 'T12:00:00').toLocaleDateString('en-GB', {day: 'numeric', month: 'short'}) : 'return unknown';
+    const rows = out.map(a => ({a, v: (val[a.player_id] || {}).value_m})).sort((x, y) => (y.v || 0) - (x.v || 0));
+    return (rows.length ? `<table><tbody>${rows.map(({a, v}) => `<tr><td>${esc(a.player_name)}<div class="sub" style="margin:0">${esc(a.reason || 'Unavailable')} · ${back(a)}</div></td><td class="r num">${v ? m(v) : '–'}</td></tr>`).join('')}</tbody></table>` : '<p class="sub">Nobody listed as out.</p>')
+      + (dbt.length ? `<p class="sub" style="margin-top:8px">Doubtful: ${dbt.map(a => esc(a.player_name)).join(', ')}.</p>` : '')
+      + (share != null && rows.length ? `<div class="callout ${share >= 0.08 ? 'r' : 'a'}">About <b>${pct(share)}</b> of the best XI's value is unavailable. The forecast for the next match takes this into account.</div>` : '');
+  })();
+  const absHtml = liveAbs != null ? liveAbs : ab.out.length
     ? `<table><tbody>${ab.out.map(p => `<tr><td>${esc(p.name)}</td><td class="r num">${m(p.value_m)}</td></tr>`).join('')}</tbody></table>
        <div class="callout ${ab.xi_share_lost>=0.08?'r':'a'}">About <b>${pct(ab.xi_share_lost)}</b> of the best XI's value is unavailable.</div>`
     : `<p class="sub">${ab.note ? esc(ab.note[0].toUpperCase()+ab.note.slice(1))+'.' : 'Nobody listed as out.'}</p>`;
@@ -369,7 +382,7 @@ function renderClub(){
     </div>
     <div class="card s5">
       <h2>Missing players</h2>
-      <div class="sub">Injured or suspended, with market value.</div>
+      <div class="sub">Injured or suspended, with market value${c.absLive ? ` · updated ${esc(new Date((c.absDay || '') + 'T12:00:00').toLocaleDateString('en-GB', {day: 'numeric', month: 'short'}))}` : ''}.</div>
       ${absHtml}
     </div>
 
@@ -567,10 +580,16 @@ async function loadForecasts(){
   for (const r of runs) if (r.kind === 'zone' && LG_OF[r.competition_id] && !latestZone[r.competition_id]) latestZone[r.competition_id] = r;
   const roundRuns = runs.filter(r => r.kind === 'round' && LG_OF[r.competition_id]);
   const zIds = Object.values(latestZone).map(r => r.run_id), rIds = roundRuns.map(r => r.run_id);
-  const [zf, mf, tr] = await Promise.all([
+  const d3 = new Date(Date.now() - 3 * 864e5).toLocaleDateString('sv-SE');
+  const [zf, mf, tr, abs] = await Promise.all([
     zIds.length ? sb(`zone_forecast?run_id=in.(${zIds.join(',')})`) : [],
     rIds.length ? sb(`match_forecast?run_id=in.(${rIds.join(',')})&select=*,match(match_date,kickoff,round,home_club_id,away_club_id,match_result(home_goals,away_goals))`) : [],
-    sb(`v_track_record?season_id=eq.${LIVE_SEASON}&kind=eq.round`)]);
+    sb(`v_track_record?season_id=eq.${LIVE_SEASON}&kind=eq.round`),
+    sb(`absence_snapshot?snap_date=gte.${d3}&select=snap_date,club_id,player_id,player_name,status,reason,expected_return,source&order=snap_date.desc`).catch(() => [])]);
+  const absDay = abs.length ? abs[0].snap_date : null;
+  for (const a of abs) if (a.snap_date === absDay && D.clubs[a.club_id]) (D.clubs[a.club_id].absLive ||= []).push(a);
+  for (const [cid, lg] of Object.entries(LG_OF)) if (abs.some(a => a.snap_date === absDay && D.clubs[a.club_id] && D.clubs[a.club_id].league === lg))
+    for (const id of D.leagues[lg].order) if (D.clubs[id]) { D.clubs[id].absLive ||= []; D.clubs[id].absDay = absDay; }
   D.zone = {}; D.zoneRun = {};
   for (const [cid, r] of Object.entries(latestZone)) { D.zone[LG_OF[cid]] = {}; D.zoneRun[LG_OF[cid]] = r; }
   const zoneRunLg = Object.fromEntries(Object.values(latestZone).map(r => [r.run_id, LG_OF[r.competition_id]]));
@@ -589,7 +608,7 @@ async function loadForecasts(){
     const R = (D.rounds[lg][no] ||= {no, name, live: {}, retro: {}});
     const res = Array.isArray(m.match_result) ? m.match_result[0] : m.match_result;
     (run.retro ? R.retro : R.live)[f.match_id] = {id: f.match_id, date: m.match_date, time: m.kickoff, h: m.home_club_id, a: m.away_club_id,
-      p: [f.p_home, f.p_draw, f.p_away], xg: [f.xg_home, f.xg_away], likely: f.likely_score, tops: f.top_scores || null,
+      p: [f.p_home, f.p_draw, f.p_away], xg: [f.xg_home, f.xg_away], likely: f.likely_score, tops: f.top_scores || null, abs: f.absences || null,
       book: f.book_home ? [f.book_home, f.book_draw, f.book_away] : null, value: f.value_bet, res: res ? [res.home_goals, res.away_goals] : null, retro: run.retro};
   }
   D.track = tr; D.nextRound = {};
@@ -635,12 +654,35 @@ function fixtureRow(f){
 }
 function trackHtml(lg){
   const rows = (D.track || []).filter(r => r.competition_id === LG_CID[lg] && r.scored > 0);
-  const agg = rs => rs.reduce((a, r) => ({n: a.n + r.scored, m: a.m + (r.model_right || 0), b: a.b + (r.book_right || 0), bets: a.bets + (r.bets || 0), pl: a.pl + (r.bet_profit || 0)}), {n: 0, m: 0, b: 0, bets: 0, pl: 0});
+  const agg = rs => rs.reduce((a, r) => ({n: a.n + r.scored, m: a.m + (r.model_right || 0), b: a.b + (r.book_right || 0), bets: a.bets + (r.bets || 0), pl: a.pl + (r.bet_profit || 0),
+    mr: a.mr + (r.model_rps != null ? r.model_rps * r.scored : 0), cr: a.cr + (r.close_rps != null ? r.close_rps * r.close_n : 0), cn: a.cn + (r.close_rps != null ? +r.close_n : 0),
+    mrn: a.mrn + (r.model_rps != null ? r.scored : 0)}), {n: 0, m: 0, b: 0, bets: 0, pl: 0, mr: 0, cr: 0, cn: 0, mrn: 0});
   const live = agg(rows.filter(r => !r.retro)), all = agg(rows);
   if (!all.n) return '<p class="empty">No scored forecasts yet.</p>';
-  const line = (lab, a) => a.n ? `<tr><td>${lab}</td><td class="r num">${a.n}</td><td class="r num">${a.m}</td><td class="r num">${a.b}</td><td class="r num">${a.bets ? (a.pl >= 0 ? '+' : '') + a.pl.toFixed(1) : '–'}</td></tr>` : '';
-  return `<div class="scroll"><table><thead><tr><th></th><th class="r">Games</th><th class="r">Model fav. won</th><th class="r">Bookies fav. won</th><th class="r">Value bets ±</th></tr></thead><tbody>${line('Live', live)}${line('Incl. back-filled', all)}</tbody></table></div>
-    <div class="callout a">Value bets: 1 unit whenever the model's chance × the price is more than 5% above break-even. Small sample, and no evidence of a real edge over the bookmakers so far.</div>`;
+  const rp = (x, n) => n ? (x / n).toFixed(3) : '–';
+  const line = (lab, a) => a.n ? `<tr><td>${lab}</td><td class="r num">${a.n}</td><td class="r num">${a.m} / ${a.b}</td><td class="r num" style="white-space:nowrap">${rp(a.mr, a.mrn)} / ${rp(a.cr, a.cn)}</td></tr>` : '';
+  // cumulative average log-loss by round: model vs closing line, on the matches that have closing odds
+  const byRound = rows.filter(r => r.close_n > 0 && r.model_logloss_close_n != null).map(r => ({no: +((r.round || '').match(/\d+/) || [0])[0], retro: r.retro,
+    m: +r.model_logloss_close_n * r.close_n, c: +r.close_logloss * r.close_n, n: +r.close_n})).sort((a, b) => a.no - b.no);
+  let chart = '';
+  if (byRound.length >= 3) {
+    let M = 0, C = 0, N = 0; const pts = byRound.map(r => { M += r.m; C += r.c; N += r.n; return {no: r.no, m: M / N, c: C / N, retro: r.retro}; });
+    const W = 320, H = 150, L = 40, R = 18, T = 10, B = 24, lo = Math.min(...pts.flatMap(p => [p.m, p.c])) - 0.01, hi = Math.max(...pts.flatMap(p => [p.m, p.c])) + 0.01;
+    const X = i => L + i * (W - L - R) / (pts.length - 1), Y = v => T + (hi - v) * (H - T - B) / (hi - lo);
+    const path = k => pts.map((p, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p[k]).toFixed(1)).join(' ');
+    const firstLive = pts.findIndex(p => !p.retro), last = pts[pts.length - 1];
+    chart = `<div class="sub" style="margin:14px 0 4px">Running average error (log-loss) on matches with closing odds: lower is better.</div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Model ${last.m.toFixed(3)} vs closing line ${last.c.toFixed(3)}">
+        ${[lo + 0.01, (lo + hi) / 2, hi - 0.01].map(v => `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L - 4}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v.toFixed(3)}</text>`).join('')}
+        ${firstLive > 0 ? `<line x1="${X(firstLive)}" x2="${X(firstLive)}" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="3 3"/><text x="${X(firstLive) + (firstLive > pts.length / 2 ? -3 : 3)}" y="${T + 9}" text-anchor="${firstLive > pts.length / 2 ? 'end' : 'start'}" font-size="10" fill="var(--muted)">live from here</text>` : ''}
+        <path d="${path('c')}" fill="none" stroke="var(--grey)" stroke-width="2.5"/><path d="${path('m')}" fill="none" stroke="var(--pitch)" stroke-width="2.5"/>
+        ${pts.map((p, i, A, st = Math.ceil(pts.length / 6)) => (i % st === 0 && pts.length - 1 - i >= st / 2) || i === pts.length - 1 ? `<text x="${X(i)}" y="${H - 8}" text-anchor="${i === pts.length - 1 ? 'end' : i === 0 ? 'start' : 'middle'}" font-size="10" fill="var(--muted)">MD${p.no}</text>` : '').join('')}
+      </svg>
+      <div class="legend num" style="display:flex;gap:14px;font-size:13px"><span><b style="color:var(--pitch)">■</b> Our model ${last.m.toFixed(3)}</span><span><b style="color:var(--grey)">■</b> Bookmakers' closing odds ${last.c.toFixed(3)}</span></div>`;
+  }
+  return `<div class="scroll"><table><thead><tr><th></th><th class="r">Games</th><th class="r">Fav. won<br>model / bookies</th><th class="r">RPS<br>model / closing</th></tr></thead><tbody>${line('Live', live)}${line('Incl. back-filled', all)}</tbody></table></div>
+    ${chart}
+    <div class="callout a">RPS (ranked probability score) measures how close the chances were to what happened: lower is better, and around 0.19–0.21 is professional level. The bookmakers' closing odds are the toughest benchmark there is.${all.bets ? ` Value bets so far: ${all.bets}, ${all.pl >= 0 ? '+' : ''}${all.pl.toFixed(1)} units.` : ''}</div>`;
 }
 const mdSel = {};   // chosen matchday per league (null = latest)
 function renderMatchday(){
@@ -942,6 +984,8 @@ function whyHtml(f){
   const shade = (c, v) => `color-mix(in srgb, ${c} ${Math.round(12 + 88 * v / max)}%, transparent)`;
   const strength = rh != null && ra != null ? (() => { const d = +rh - +ra, fav = d > 0 ? H.short : A.short;
     return `<p>Strength today: <b>${esc(H.short)}</b> ${(+rh).toFixed(2)}, <b>${esc(A.short)}</b> ${(+ra).toFixed(2)} points per game${Math.abs(d) < 0.1 ? ', almost level' : `, a gap of ${Math.abs(d).toFixed(2)} in ${esc(fav)}'s favour`}. The gap, plus home advantage, sets the expected goals.</p>`; })() : '';
+  const absLine = f.abs ? (() => { const side = (k, C) => { const x = f.abs[k] || {}; return `<b>${esc(C.short)}</b>: ${x.out && x.out.length ? esc(x.out.join(', ')) + (x.rating_adj ? ` (strength ${x.rating_adj > 0 ? '+' : ''}${(+x.rating_adj).toFixed(2)})` : '') : (x.note ? 'not adjusted, ' + esc(x.note) : 'nobody key missing')}`; };
+    return `<p>Missing players, valued against each side's best XI: ${side('home', H)}; ${side('away', A)}.</p>`; })() : '';
   let dist = '';
   for (let k = 0; k <= 5; k++) { const a = po(lh, k), b = po(la, k);
     dist += `<div class="l">${pctI(a)}<div class="b" style="width:${Math.round(a * 260)}px;background:var(--pitch);border-radius:4px 0 0 4px"></div></div><div class="k">${k}</div><div class="rr"><div class="b" style="width:${Math.round(b * 260)}px;background:var(--red);border-radius:0 4px 4px 0"></div>${pctI(b)}</div>`; }
@@ -952,7 +996,7 @@ function whyHtml(f){
     grid += '</tr>'; }
   const res = f.res ? (f.res[0] < N && f.res[1] < N ? `<p>The real score, <b>${f.res[0]}-${f.res[1]}</b>, is outlined: the model gave it ${(g[f.res[0]][f.res[1]] * 100).toFixed(1)}%.</p>` : `<p>The real score, <b>${f.res[0]}-${f.res[1]}</b>, is off the grid, which the model rated very unlikely.</p>`) : '';
   return `<div class="wh"><div><div class="eyebrow">${esc(H.short)} · home</div><div class="big num">${lh.toFixed(2)}</div></div><div class="r"><div class="eyebrow">${esc(A.short)} · away</div><div class="big num">${la.toFixed(2)}</div></div></div>
-    <div class="sub" style="margin:0">Expected goals: how many each side scores on average in matches like this.</div>${strength}
+    <div class="sub" style="margin:0">Expected goals: how many each side scores on average in matches like this.</div>${strength}${absLine}
     <div class="lab">How many goals each side might score</div><div class="dist num">${dist}</div>
     <div class="lab">Every scoreline: ${esc(H.short)} goals down, ${esc(A.short)} goals across</div>
     <div style="overflow-x:auto"><table class="sg num">${grid}</table></div>
