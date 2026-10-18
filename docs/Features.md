@@ -29,6 +29,7 @@ Each match card shows:
 - **Bookies**: bookmaker chances, margin removed;
 - **Value** flag when our chance × the price beats the price by more than 5%;
 - after the match, ✓/✗ for whether the model's and the bookmakers' favourite was right.
+- **How we got here** (button): the working behind the forecast. It shows each side's expected goals and strength rating, the chance of each side scoring 0–5 goals, and a grid of every scoreline's chance, coloured by result (each colour adds up to that result's chance). After the match, the real score is outlined. The grid is rebuilt in the browser from the stored expected goals and result chances, using the same rescaled-Poisson method as the pipeline, so nothing extra is stored.
 
 Below it: the **track record**, i.e. how often model and bookmakers picked the right outcome, and the profit of the value flags. Genuine pre-match forecasts are kept apart from back-filled ones.
 
