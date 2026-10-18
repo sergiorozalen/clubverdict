@@ -4,6 +4,16 @@
 
 The data comes from a daily job in the private repo `sergiorozalen/club-verdict-pipeline`, documented in that repo's `docs/` folder (architecture, database, forecast model, Season diary, operations).
 
+## How it fits together
+
+```mermaid
+flowchart LR
+  P["Private repo: club-verdict-pipeline<br/>daily job: data, forecasts, diary"] --> DB[("Supabase database")]
+  DB -- "read-only key" --> W["This repo: clubverdict<br/>GitHub Pages, runs in the browser"]
+```
+
+This repo is the shop window: one page with no heavy work. The browser fetches everything live from Supabase and draws it. The engine is the private pipeline repo; its `docs/Architecture.md` has the full diagram and a plain-words overview.
+
 ## Pages
 
 | Page | What it covers |
