@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Paper Bets</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%231E6B45'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23F3F0E8'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F3F0E8; --card:#FBFAF6; --ink:#14201A; --muted:#5E6A62; --line:#DAD5C8;
+  --pitch:#1E6B45; --pitch-soft:#DCEBDF; --amber:#C98A12; --amber-soft:#F5E6C4;
+  --red:#B8402C; --red-soft:#F3D9D2; --blue:#2F5E8C; --grey:#9AA39C;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1512; --card:#161E1A; --ink:#ECEAE3; --muted:#9BA69F; --line:#2A342F;
+    --pitch:#4FB482; --pitch-soft:#1D3328; --amber:#E3AE45; --amber-soft:#3A2F17;
+    --red:#E0735E; --red-soft:#3C211C; --blue:#7FA9D6; --grey:#5F6A64;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1512; --card:#161E1A; --ink:#ECEAE3; --muted:#9BA69F; --line:#2A342F;
+  --pitch:#4FB482; --pitch-soft:#1D3328; --amber:#E3AE45; --amber-soft:#3A2F17;
+  --red:#E0735E; --red-soft:#3C211C; --blue:#7FA9D6; --grey:#5F6A64;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink)}
+body{font-family:Barlow,system-ui,sans-serif;font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased}
+h1,h2,.disp{font-family:"Barlow Condensed",Barlow,sans-serif;letter-spacing:.01em;margin:0}
+.wrap{max-width:960px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.brand{font-family:"Barlow Condensed";font-weight:800;font-size:20px;text-transform:uppercase;letter-spacing:.06em;margin-right:auto;color:var(--ink);text-decoration:none}
+.tag{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;background:var(--amber-soft);color:var(--ink);padding:3px 8px;border-radius:99px}
+h1{font-size:clamp(28px,5vw,40px);font-weight:700;margin:14px 0 4px}
+.sub{color:var(--muted);margin:0 0 18px;max-width:62ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{font-size:22px;font-weight:700;margin-bottom:10px;display:flex;align-items:baseline;gap:8px}
+h2 small{font-family:Barlow;font-size:14px;font-weight:500;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.kpi .l{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.kpi .v{font-family:"Barlow Condensed";font-size:30px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi .n{font-size:13px;color:var(--muted)}
+.pos{color:var(--pitch)} .neg{color:var(--red)}
+.bet{display:grid;grid-template-columns:1fr auto;gap:8px 14px;padding:12px 0;border-top:1px solid var(--line);align-items:center}
+.bet:first-of-type{border-top:0}
+.teams{font-weight:600}
+.meta{font-size:14px;color:var(--muted)}
+.pick{font-family:"Barlow Condensed";font-size:19px;font-weight:600}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.actions label{font-size:13px;color:var(--muted)}
+input[type=number],input[type=email]{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
+input[type=number]{width:78px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=email]{width:min(320px,100%)}
+button{font:inherit;font-weight:600;border-radius:8px;padding:7px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.go{background:var(--pitch);border-color:var(--pitch);color:#fff}
+button.no{color:var(--red)}
+button:disabled{opacity:.5;cursor:default}
+.empty{color:var(--muted);padding:6px 0}
+.status{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:99px;background:var(--pitch-soft)}
+.status.rejected,.status.expired,.status.withdrawn{background:var(--line);color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:6px 6px;border-bottom:1px solid var(--line)}
+td{padding:7px 6px;border-bottom:1px solid var(--line)}
+td.r,th.r{text-align:right}
+.scroll{overflow-x:auto}
+.chart svg{width:100%;height:auto;display:block}
+.gate{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin:8px 0 4px}
+.gate span{display:block;height:100%;background:var(--pitch)}
+.msg{font-size:14px;margin-top:8px;color:var(--muted)}
+.err{color:var(--red)}
+.hide{display:none}
+@media (max-width:560px){.bet{grid-template-columns:1fr}.actions{justify-content:flex-start}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><a class="brand" href="./">Club Verdict</a><span class="tag">Paper money only</span><button id="out" class="hide">Sign out</button></header>
+  <h1>Paper bets</h1>
+  <p class="sub">The model proposes bets on the next round each morning. Approve or reject each one before kick-off; results settle into a virtual £100 bankroll. Nothing is placed with any bookmaker or exchange.</p>
+
+  <section id="login" class="card hide">
+    <h2>Sign in</h2>
+    <p class="meta">Private page. Enter your email and you'll get a sign-in link.</p>
+    <form id="lf"><input type="email" id="em" required placeholder="you@example.com" autocomplete="email"> <button class="go">Send link</button></form>
+    <p id="lmsg" class="msg"></p>
+  </section>
+
+  <main id="app" class="hide">
+    <div class="kpis" id="kpis"></div>
+    <section class="card">
+      <h2>Is there an edge? <small>gate before any real money</small></h2>
+      <div id="gate"></div>
+    </section>
+    <section class="card"><h2>Waiting for you <small id="pc"></small></h2><div id="pending"></div></section>
+    <section class="card"><h2>Approved <small>waiting for the result</small></h2><div id="open"></div></section>
+    <section class="card chart"><h2>Bankroll</h2><div id="curve"></div></section>
+    <section class="card"><h2>History</h2><div class="scroll" id="hist"></div></section>
+    <p class="msg" id="rules"></p>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SB_URL = 'https://fqqyeixrelyexbejjgxw.supabase.co', SB_KEY = 'sb_publishable_IS9UKTfkIWks5pdz035TVw_KiXOTd__';
+const sb = supabase.createClient(SB_URL, SB_KEY, {auth: {persistSession: true, detectSessionInUrl: true}});
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const gbp = x => (x < 0 ? '−£' : '£') + Math.abs(x).toFixed(2);
+const pct = (x, d = 1) => (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(100 * x).toFixed(d) + '%';
+const TZ = {ES1: 'Europe/Madrid', GB1: 'Europe/London'};
+
+function koText(m) {
+  const d = new Date(m.match_date + 'T12:00:00Z');
+  const day = d.toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC'});
+  return day + (m.kickoff ? ' ' + m.kickoff + (m.competition_id === 'ES1' ? ' (Spain)' : '') : ', time tbc');
+}
+function pickText(b) {
+  const m = b.match, h = m.home?.short_name || m.home?.name, a = m.away?.short_name || m.away?.name;
+  return b.selection === 'home' ? h + ' to win' : b.selection === 'away' ? a + ' to win' : 'Draw';
+}
+function teams(m) { return esc((m.home?.name || '?') + ' v ' + (m.away?.name || '?')); }
+function league(m) { return m.competition_id === 'ES1' ? 'LaLiga' : 'Premier League'; }
+
+async function load() {
+  const [{data: bets, error}, {data: cfgs}] = await Promise.all([
+    sb.from('paper_bet').select('*, match(match_date,kickoff,round,competition_id,home:club!match_home_club_id_fkey(name,short_name),away:club!match_away_club_id_fkey(name,short_name))').order('created', {ascending: true}),
+    sb.from('paper_config').select('*')]);
+  if (error) { $('app').innerHTML = '<p class="err">Could not load bets: ' + esc(error.message) + '</p>'; return; }
+  if (!cfgs || !cfgs.length) { $('app').innerHTML = '<p class="err">This account can\'t see the paper bets. Sign in with the owner\'s email.</p>'; return; }
+  render(bets, cfgs[0]);
+}
+
+function render(bets, cfg) {
+  const settled = bets.filter(b => b.status === 'settled').sort((a, b) => (a.settled_at || '').localeCompare(b.settled_at || '') || a.bet_id - b.bet_id);
+  let bank = +cfg.start_bankroll, peak = bank; const pts = [{x: 0, y: bank}];
+  settled.forEach((b, i) => { bank += +b.pnl; peak = Math.max(peak, bank); pts.push({x: i + 1, y: bank}); });
+  const staked = settled.reduce((s, b) => s + +b.stake, 0), profit = bank - cfg.start_bankroll;
+  const wins = settled.filter(b => b.won).length;
+  const withClv = bets.filter(b => b.clv !== null && ['settled', 'approved'].includes(b.status));
+  const clv = withClv.length ? withClv.reduce((s, b) => s + +b.clv, 0) / withClv.length : null;
+  const openStake = bets.filter(b => b.status === 'approved').reduce((s, b) => s + +b.stake, 0);
+  $('kpis').innerHTML = [
+    ['Bankroll', gbp(bank), 'started at ' + gbp(+cfg.start_bankroll), profit > 0 ? 'pos' : profit < 0 ? 'neg' : ''],
+    ['Profit', gbp(profit), openStake ? gbp(openStake) + ' in play' : 'nothing in play', profit > 0 ? 'pos' : profit < 0 ? 'neg' : ''],
+    ['Yield', staked ? pct(profit / staked) : '–', 'profit ÷ money staked', profit > 0 ? 'pos' : profit < 0 ? 'neg' : ''],
+    ['Settled bets', settled.length, settled.length ? wins + ' won (' + Math.round(100 * wins / settled.length) + '%)' : 'none yet', ''],
+    ['Closing line value', clv === null ? '–' : pct(clv), withClv.length + ' bets with closing prices', clv > 0 ? 'pos' : clv < 0 ? 'neg' : '']
+  ].map(([l, v, n, c]) => `<div class="kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div><div class="n">${n}</div></div>`).join('');
+
+  const n = settled.length, goal = 150, ok = n >= goal && clv !== null && clv > 0;
+  $('gate').innerHTML = `<div class="gate"><span style="width:${Math.min(100, 100 * n / goal)}%"></span></div>
+    <p class="meta">${n} of ${goal} settled bets. Average closing line value ${clv === null ? 'not known yet' : pct(clv, 2)}.
+    ${ok ? '<b class="pos">The gate is passed: worth discussing real stakes.</b>' : 'Real money only if, after ' + goal + ' bets, we beat the closing price on average (above 0%). The backtest says the current model does not.'}
+    ${bank < (1 - cfg.stop_drawdown) * peak ? '<br><b class="neg">Stopped: the bankroll is more than ' + Math.round(100 * cfg.stop_drawdown) + '% below its peak, so no new bets are proposed.</b>' : ''}</p>`;
+
+  const pending = bets.filter(b => b.status === 'pending').sort((a, b) => a.match.match_date.localeCompare(b.match.match_date));
+  $('pc').textContent = pending.length ? pending.length + ' to decide' : '';
+  $('pending').innerHTML = pending.length ? pending.map(b => `
+    <div class="bet" data-id="${b.bet_id}">
+      <div><div class="pick">${esc(pickText(b))} @ ${(+b.price).toFixed(2)}</div>
+        <div class="teams">${teams(b.match)}</div>
+        <div class="meta">${league(b.match)} · ${esc(koText(b.match))} · model ${Math.round(100 * b.model_p)}% vs price ${Math.round(100 / b.price)}% · edge ${pct(+b.edge)} · ${b.price_src === 'Betfair' ? 'Betfair price, 5% commission' : 'bookmaker average price'}</div></div>
+      <div class="actions"><label>Stake £<input type="number" min="0.1" max="1000" step="0.1" value="${(+b.stake).toFixed(2)}"></label>
+        <button class="go" data-act="approved">Approve</button><button class="no" data-act="rejected">Reject</button></div>
+    </div>`).join('') : '<p class="empty">No bets waiting. New ones appear after the morning run once the next round has prices.</p>';
+
+  const open = bets.filter(b => b.status === 'approved').sort((a, b) => a.match.match_date.localeCompare(b.match.match_date));
+  $('open').innerHTML = open.length ? open.map(b => `
+    <div class="bet" data-id="${b.bet_id}">
+      <div><div class="pick">${esc(pickText(b))} @ ${(+b.price).toFixed(2)} · ${gbp(+b.stake)}</div>
+        <div class="meta">${teams(b.match)} · ${esc(koText(b.match))}</div></div>
+      <div class="actions"><button data-undo="1">Undo</button></div>
+    </div>`).join('') : '<p class="empty">Nothing in play.</p>';
+
+  $('curve').innerHTML = pts.length > 1 ? curve(pts, +cfg.start_bankroll) : '<p class="empty">The curve starts once the first bet settles.</p>';
+
+  const hist = bets.filter(b => ['settled', 'rejected', 'expired', 'withdrawn'].includes(b.status)).sort((a, b) => b.match.match_date.localeCompare(a.match.match_date));
+  $('hist').innerHTML = hist.length ? `<table><thead><tr><th>Date</th><th>Match</th><th>Pick</th><th class="r">Price</th><th class="r">Stake</th><th>Result</th><th class="r">P/L</th><th class="r">CLV</th></tr></thead><tbody>` +
+    hist.map(b => `<tr><td>${esc(koText(b.match).split(',')[0])}</td><td>${teams(b.match)}</td><td>${esc(pickText(b))}</td><td class="r">${(+b.price).toFixed(2)}</td>
+      <td class="r">${b.status === 'settled' ? gbp(+b.stake) : ''}</td>
+      <td>${b.status === 'settled' ? (b.won ? '<span class="pos">Won</span>' : 'Lost') : `<span class="status ${b.status}">${b.status}</span>`}</td>
+      <td class="r ${+b.pnl > 0 ? 'pos' : +b.pnl < 0 ? 'neg' : ''}">${b.pnl === null ? '' : gbp(+b.pnl)}</td>
+      <td class="r">${b.clv === null ? '' : pct(+b.clv)}</td></tr>`).join('') + '</tbody></table>' : '<p class="empty">No history yet.</p>';
+
+  $('rules').textContent = `Rules: bet the side with the biggest expected profit when it's between ${pct(+cfg.min_edge, 0)} and ${pct(+cfg.max_edge, 0)} per £1; stake ${cfg.kelly_fraction * 100}% Kelly, at most ${cfg.max_stake_pct * 100}% of the free bankroll (minimum £${(+cfg.min_stake).toFixed(2)}); up to ${cfg.max_bets_per_round} per league round. Decisions close 5 minutes before kick-off. Results settle in the next morning's run.`;
+}
+
+function curve(pts, start) {
+  const W = 900, H = 220, P = 34, xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  let lo = Math.min(start, ...ys), hi = Math.max(start, ...ys); const pad = Math.max(1, (hi - lo) * .1); lo -= pad; hi += pad;
+  const X = x => P + (W - P - 8) * x / Math.max(1, Math.max(...xs)), Y = y => 8 + (H - 30) * (hi - y) / (hi - lo);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + X(p.x).toFixed(1) + ' ' + Y(p.y).toFixed(1)).join(' ');
+  const last = pts[pts.length - 1];
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Bankroll after each settled bet">
+    <line x1="${P}" x2="${W - 8}" y1="${Y(start)}" y2="${Y(start)}" stroke="var(--grey)" stroke-dasharray="4 4"/>
+    <text x="${P - 6}" y="${Y(start) + 4}" text-anchor="end" font-size="12" fill="var(--muted)">£${start}</text>
+    <path d="${d}" fill="none" stroke="var(--pitch)" stroke-width="2.5" stroke-linejoin="round"/>
+    <circle cx="${X(last.x)}" cy="${Y(last.y)}" r="4" fill="var(--pitch)"/>
+    <text x="${W - 8}" y="${H - 6}" text-anchor="end" font-size="12" fill="var(--muted)">bet ${last.x}</text>
+  </svg>`;
+}
+
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('button[data-act],button[data-undo]'); if (!btn) return;
+  const row = btn.closest('.bet'), id = +row.dataset.id; row.querySelectorAll('button').forEach(b => b.disabled = true);
+  let res;
+  if (btn.dataset.undo) res = await sb.rpc('undo_paper_bet', {p_bet_id: id});
+  else {
+    const st = parseFloat(row.querySelector('input').value);
+    res = await sb.rpc('decide_paper_bet', {p_bet_id: id, p_decision: btn.dataset.act, p_stake: isFinite(st) ? st : null});
+  }
+  if (res.error) { alert(res.error.message); row.querySelectorAll('button').forEach(b => b.disabled = false); }
+  load();
+});
+
+$('lf').addEventListener('submit', async e => {
+  e.preventDefault(); $('lmsg').textContent = 'Sending…';
+  const {error} = await sb.auth.signInWithOtp({email: $('em').value.trim(), options: {emailRedirectTo: location.origin + location.pathname}});
+  $('lmsg').textContent = error ? 'Could not send: ' + error.message : 'Check your inbox for the sign-in link (open it on this device).';
+});
+$('out').addEventListener('click', async () => { await sb.auth.signOut(); location.reload(); });
+
+sb.auth.onAuthStateChange((_ev, session) => {
+  $('login').classList.toggle('hide', !!session); $('app').classList.toggle('hide', !session); $('out').classList.toggle('hide', !session);
+  if (session) load();
+});
+</script>
+</body>
+</html>
