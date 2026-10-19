@@ -225,6 +225,9 @@ $('lf').addEventListener('submit', async e => {
 });
 $('out').addEventListener('click', async () => { await sb.auth.signOut(); location.reload(); });
 
+// a failed sign-in link comes back with the reason in the address (#error_description=...): show it
+{ const q = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));
+  if (q.get('error_description')) { $('lmsg').innerHTML = '<span class="err">Sign-in link didn\'t work: ' + esc(q.get('error_description')) + '. Send a new link and use the newest email.</span>'; history.replaceState(null, '', location.pathname); } }
 sb.auth.onAuthStateChange((_ev, session) => {
   $('login').classList.toggle('hide', !!session); $('app').classList.toggle('hide', !session); $('out').classList.toggle('hide', !session);
   if (session) load();
