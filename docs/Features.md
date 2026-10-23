@@ -18,9 +18,9 @@ One club at a time, picked from the menu.
 
 ## Matchday
 
-The next round of the selected league (the earliest round with games still to play; a lone postponed game doesn't count), plus the previous round with results.
+The next round of the selected league (the earliest round with games still to play; a lone postponed game doesn't count).
 
-**Matchday picker**: the arrows and the menu under the title go back to any earlier round of the season, with *Back to latest* to return. A played round shows how many times the model's and the bookmakers' favourites won. Rounds before the site went live are marked *back-filled*: worked out after the fact, so they are kept out of the live track record.
+**Matchday picker**: the arrows and the menu under the title go back to any earlier round of the season (one click on ‹ for the last round played), with *Back to latest* to return. A played round shows how many times the model's and the bookmakers' favourites won. Rounds before the site went live are marked *back-filled*: worked out after the fact, so they are kept out of the live track record.
 
 Each match card shows:
 
