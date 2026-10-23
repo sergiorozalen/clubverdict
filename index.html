@@ -711,7 +711,6 @@ function renderMatchday(){
       <div class="sub">${note} <b>Result</b> is the most likely outcome; <b>Top scores</b> are the three likeliest exact scores. <b>How we got here</b> shows the working.</div>${summary}
       ${sel ? sel.fixtures.map(fixtureRow).join('') : '<p class="empty">No forecasts published yet.</p>'}</div>
     <div class="card s4"><h2>Track record</h2><div class="sub">${esc(L.name)} 2026-27: how often each side's favourite won.</div>${trackHtml(league)}</div>
-    ${isDefault && prev && prev !== sel ? `<div class="card s12"><h2>Last round · ${esc(prev.name)}</h2><div class="sub">What the model said before kick-off, and what happened.</div>${prev.fixtures.map(fixtureRow).join('')}</div>` : ''}
   </section>`;
   const go = no => { mdSel[league] = no; renderMatchday(); };
   if ($('#md-sel')) $('#md-sel').onchange = e => go(+e.target.value);
